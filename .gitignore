@@ -1,0 +1,9 @@
+node_modules/
+.npm-cache/
+.agent-tasks/.python/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example

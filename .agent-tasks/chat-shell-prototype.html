@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AgentRunner chat shell prototype</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #121212; color: #e0e0e0; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #121212; }
+      button, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      .shell { display: grid; grid-template-columns: 224px minmax(420px, 1fr) 300px; min-height: 100vh; max-width: 1660px; margin: 0 auto; }
+      .rail, .context { padding: 18px; background: #171717; }
+      .rail { border-right: 1px solid #2a2a2a; }
+      .context { border-left: 1px solid #2a2a2a; }
+      .brand { margin: 0 0 25px; font-size: 18px; letter-spacing: -0.04em; }
+      .eyebrow { margin: 0 0 6px; color: #7d9a9a; font-size: 10px; font-weight: 750; letter-spacing: .13em; }
+      .new-thread, .primary { width: 100%; border: 0; border-radius: 7px; background: #8bd5ca; color: #0a1a18; padding: 9px 11px; font-size: 13px; font-weight: 750; text-align: left; }
+      .history { margin-top: 24px; }
+      .history h2, .context h2 { margin: 0 0 10px; color: #92999c; font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+      .thread { margin: 2px 0; border-radius: 6px; padding: 10px; color: #aab2b4; font-size: 13px; line-height: 1.35; }
+      .thread.active { background: #222727; color: #e7eeee; }
+      .thread small { display: block; margin-top: 3px; color: #778083; font-size: 11px; }
+      .chat { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+      .chat-header { display: flex; align-items: center; gap: 14px; min-height: 72px; padding: 0 28px; border-bottom: 1px solid #2a2a2a; }
+      .chat-header h1 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+      .chat-header p { margin: 3px 0 0; color: #899295; font-size: 12px; }
+      .local { margin-left: auto; color: #8bd5ca; font-size: 11px; font-weight: 700; }
+      .feed { max-width: 800px; width: 100%; margin: 0 auto; padding: 34px 28px; }
+      .date { margin: 0 0 26px; color: #697376; font-size: 11px; text-align: center; }
+      .message { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; margin: 0 0 24px; }
+      .avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #273235; color: #b6ddda; font-size: 11px; font-weight: 800; }
+      .avatar.user { background: #353137; color: #dfd7e6; }
+      .message header { display: flex; gap: 9px; align-items: baseline; }
+      .message strong { font-size: 13px; }
+      .message time { color: #667073; font-size: 11px; }
+      .message p { margin: 5px 0 0; color: #d1d8da; font-size: 14px; line-height: 1.55; }
+      .response-card { margin-top: 12px; border: 1px solid #314345; border-radius: 8px; background: #171e1f; overflow: hidden; }
+      .response-card header { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid #2d3b3d; color: #9bc9c4; font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+      .response-card header span { margin-left: auto; color: #8d999b; font-weight: 600; letter-spacing: 0; text-transform: none; }
+      .response-card ul { margin: 0; padding: 11px 12px 11px 27px; color: #cdd6d8; font-size: 12px; line-height: 1.65; }
+      .composer { padding: 15px 28px 22px; border-top: 1px solid #2a2a2a; }
+      .compose-box { display: grid; gap: 10px; max-width: 800px; margin: 0 auto; padding: 11px; border: 1px solid #3b4748; border-radius: 10px; background: #1b1e1e; }
+      textarea { min-height: 48px; resize: none; border: 0; outline: 0; background: transparent; color: #e0e0e0; font-size: 14px; }
+      .compose-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      .scope { color: #8b9698; font-size: 11px; }
+      .primary { width: auto; text-align: center; }
+      .context-card { margin-bottom: 14px; padding: 13px; border: 1px solid #2d3435; border-radius: 8px; background: #1c1c1c; }
+      .context-card h3 { margin: 0 0 6px; font-size: 13px; }
+      .context-card p { margin: 0; color: #8d9699; font-size: 12px; line-height: 1.45; }
+      label { display: block; margin: 10px 0 5px; color: #aeb8ba; font-size: 11px; font-weight: 700; }
+      select { width: 100%; border: 1px solid #3a4445; border-radius: 6px; background: #101010; color: #e0e0e0; padding: 8px; font-size: 12px; }
+      .healthy { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; color: #8bd5ca; font-size: 11px; }
+      .healthy::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #8bd5ca; }
+      .packet { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+      .packet span { border: 1px solid #3a4849; border-radius: 99px; padding: 3px 7px; color: #a8b8b9; font-size: 10px; }
+      .terminal-state { display: grid; gap: 8px; padding: 11px; border-radius: 6px; background: #101415; color: #9da8aa; font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; }
+      .terminal-state strong { color: #c5e1dd; font-family: Inter, sans-serif; font-size: 12px; }
+      .future { margin-top: 8px !important; color: #778386 !important; }
+      @media (max-width: 1000px) { .shell { grid-template-columns: 190px minmax(0, 1fr); } .context { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; border-top: 1px solid #2a2a2a; border-left: 0; } .context h2 { grid-column: 1 / -1; } .context-card { margin: 0; } }
+      @media (max-width: 700px) { .shell { display: block; } .rail { display: none; } .context { display: block; } .context-card { margin-bottom: 12px; } .chat-header, .composer { padding-inline: 16px; } .feed { padding-inline: 16px; } }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="rail" aria-label="Assistant thread history">
+        <p class="eyebrow">LOCAL CODING-AGENT HUB</p>
+        <h1 class="brand">AgentRunner</h1>
+        <button class="new-thread" type="button">+ New orchestration thread</button>
+        <nav class="history" aria-label="Recent threads">
+          <h2>Recent</h2>
+          <div class="thread active">Continue AgentRunner v0.1<small>Scope: AgentRunner</small></div>
+          <div class="thread">Prepare research experiment<small>Scope: Sengupta Research</small></div>
+          <div class="thread">Review portfolio work<small>Scope: ResumeGenerator</small></div>
+        </nav>
+      </aside>
+      <section class="chat" aria-label="Assistant orchestration thread">
+        <header class="chat-header">
+          <div><h1>Continue AgentRunner v0.1</h1><p>Persistent orchestration thread; every action declares its project scope.</p></div>
+          <span class="local">LOCAL CONTROL PLANE</span>
+        </header>
+        <div class="feed">
+          <p class="date">Today</p>
+          <article class="message">
+            <div class="avatar user">Y</div>
+            <div><header><strong>You</strong><time>10:34 AM</time></header><p>Continue AgentRunner. I want the next deliverable to be a chat-first v0.1 interface that prepares a coding-agent continuation.</p></div>
+          </article>
+          <article class="message">
+            <div class="avatar">AR</div>
+            <div>
+              <header><strong>AgentRunner</strong><time>10:34 AM</time></header>
+              <p>I will prepare a reviewable continuation brief for the selected project. General assistant chat is deferred; this request will use only the context packet shown beside the thread.</p>
+              <section class="response-card" aria-label="Continuation preparation">
+                <header>Continuation preparation <span>Review before terminal handoff</span></header>
+                <ul><li>Project scope: <strong>AgentRunner</strong></li><li>Evidence order: deliverable, handoff, task state, Git status</li><li>Route: OpenRouter fixed free model → draft only</li></ul>
+              </section>
+            </div>
+          </article>
+          <article class="message">
+            <div class="avatar user">Y</div>
+            <div><header><strong>You</strong><time>10:35 AM</time></header><p>Use an embedded terminal for now, but retain a path for a pop-out takeover window later.</p></div>
+          </article>
+          <article class="message">
+            <div class="avatar">AR</div>
+            <div><header><strong>AgentRunner</strong><time>10:35 AM</time></header><p>Recorded. The terminal remains one project work surface attached to this thread, never a second assistant identity.</p></div>
+          </article>
+        </div>
+        <form class="composer" onsubmit="return false">
+          <div class="compose-box">
+            <textarea aria-label="Requested deliverable" placeholder="Describe the next deliverable for the selected project…"></textarea>
+            <div class="compose-actions"><span class="scope">Scope: AgentRunner · Context packet visible at right</span><button class="primary" type="button">Draft continuation brief</button></div>
+          </div>
+        </form>
+      </section>
+      <aside class="context" aria-label="Context and provider controls">
+        <h2>Request controls</h2>
+        <section class="context-card"><h3>Conversation context</h3><p>The active project is derived from this thread, not selected from a dropdown.</p><p class="packet"><span>AgentRunner</span><span>HANDOFF.md</span><span>.agent-tasks</span><span>Git status</span></p></section>
+        <section class="context-card"><h3>Provider route</h3><label for="provider">Healthy provider</label><select id="provider"><option>OpenRouter</option></select><span class="healthy">Healthy</span><label for="model">Fixed free model</label><select id="model"><option>Selected after health check</option></select></section>
+        <section class="context-card"><h3>Work surface</h3><div class="terminal-state"><strong>Embedded terminal · v0.1</strong><span>Launch after brief approval</span></div><p class="future">vNext: user-triggered pop-out browser window, authenticated to this same PTY.</p></section>
+      </aside>
+    </main>
+  </body>
+</html>

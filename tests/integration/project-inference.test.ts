@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest";
+
+import { inferProject } from "../../src/client/project-inference.js";
+
+
+describe("project inference helper", () => {
+  const projects = [
+    { alias: "AgentRunner", root: "C:/Projects/AgentRunner" },
+    { alias: "ResumeGenerator", root: "C:/Projects/ResumeGenerator" },
+    { alias: "NLP", root: "C:/Projects/NLP" },
+    { alias: "research-hub", root: "C:/Projects/ResearchHub" },
+  ];
+
+  it("returns none when text is empty or no projects provided", () => {
+    expect(inferProject("", projects)).toEqual({ type: "none" });
+    expect(inferProject("   ", projects)).toEqual({ type: "none" });
+    expect(inferProject("hello world", [])).toEqual({ type: "none" });
+  });
+
+  it("returns none when no matching project alias exists in text", () => {
+    expect(inferProject("continue the website deliverable please", projects)).toEqual({
+      type: "none",
+    });
+  });
+
+  it("does not match an alias embedded inside another word", () => {
+    expect(inferProject("continue AgentRunnerXYZ right now", projects)).toEqual({
+      type: "none",
+    });
+    expect(inferProject("check myNLPproject please", projects)).toEqual({
+      type: "none",
+    });
+  });
+
+  it("returns single match case-insensitively and with word boundaries", () => {
+    // Exact match
+    expect(inferProject("AgentRunner", projects)).toEqual({
+      type: "single",
+      project: { alias: "AgentRunner", root: "C:/Projects/AgentRunner" },
+    });
+
+    // Lowercase in middle of sentence
+    expect(inferProject("please continue agentrunner next deliverable", projects)).toEqual({
+      type: "single",
+      project: { alias: "AgentRunner", root: "C:/Projects/AgentRunner" },
+    });
+
+    // Punctuated
+    expect(inferProject("work on [ResumeGenerator]: add export feature", projects)).toEqual({
+      type: "single",
+      project: { alias: "ResumeGenerator", root: "C:/Projects/ResumeGenerator" },
+    });
+
+    // Hyphenated alias
+    expect(inferProject("let's work on research-hub today", projects)).toEqual({
+      type: "single",
+      project: { alias: "research-hub", root: "C:/Projects/ResearchHub" },
+    });
+  });
+
+  it("returns multiple matches when several projects are referenced", () => {
+    const result = inferProject("compare AgentRunner against ResumeGenerator", projects);
+
+    expect(result.type).toBe("multiple");
+    if (result.type === "multiple") {
+      expect(result.candidates).toHaveLength(2);
+      expect(result.candidates.map((c) => c.alias)).toContain("AgentRunner");
+      expect(result.candidates.map((c) => c.alias)).toContain("ResumeGenerator");
+    }
+  });
+
+  it("deduplicates identical matching project aliases", () => {
+    const duplicateProjects = [
+      { alias: "AgentRunner", root: "C:/Projects/AgentRunner1" },
+      { alias: "agentrunner", root: "C:/Projects/AgentRunner2" },
+    ];
+
+    expect(inferProject("work on AgentRunner", duplicateProjects)).toEqual({
+      type: "single",
+      project: { alias: "AgentRunner", root: "C:/Projects/AgentRunner1" },
+    });
+  });
+});

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AgentRunner global chat shell prototype</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #121212; color: #e0e0e0; }
+      * { box-sizing: border-box; }
+      body { min-width: 320px; margin: 0; background: #121212; }
+      button, input, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #8bd5ca; outline-offset: 2px; }
+      .shell { display: grid; grid-template-columns: 236px minmax(480px, 1fr) 326px; height: 100vh; max-width: 1680px; margin: 0 auto; overflow: hidden; }
+      .rail, .controls { min-height: 0; background: #171717; }
+      .rail { display: flex; flex-direction: column; border-right: 1px solid #2a2a2a; padding: 18px; }
+      .eyebrow { margin: 0 0 6px; color: #7d9a9a; font-size: 10px; font-weight: 750; letter-spacing: .13em; }
+      .brand { margin: 0 0 24px; font-size: 19px; letter-spacing: -.04em; }
+      .new-thread, .primary { border: 0; border-radius: 7px; background: #8bd5ca; color: #0a1a18; font-weight: 760; }
+      .new-thread { width: 100%; padding: 10px 11px; font-size: 13px; text-align: left; }
+      .thread-list { min-height: 0; margin-top: 23px; overflow-y: auto; scrollbar-gutter: stable; }
+      .rail-label, .controls-title, .panel-label { margin: 0 0 10px; color: #92999c; font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+      .thread { width: 100%; margin: 2px 0; border: 0; border-radius: 7px; padding: 10px; background: transparent; color: #aab2b4; font-size: 13px; line-height: 1.35; text-align: left; }
+      .thread.active { background: #222727; color: #e7eeee; }
+      .thread small { display: block; margin-top: 3px; color: #778083; font-size: 11px; }
+      .chat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+      .chat-header { display: flex; align-items: center; gap: 14px; min-height: 73px; padding: 0 28px; border-bottom: 1px solid #2a2a2a; }
+      .chat-header h1 { margin: 0; font-size: 16px; letter-spacing: -.02em; }
+      .chat-header p { margin: 3px 0 0; color: #899295; font-size: 12px; }
+      .local { margin-left: auto; border: 1px solid #36514f; border-radius: 999px; padding: 5px 8px; color: #8bd5ca; font-size: 10px; font-weight: 750; letter-spacing: .06em; white-space: nowrap; }
+      .feed-wrap { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+      .feed { width: min(800px, 100%); margin: 0 auto; padding: 34px 28px 42px; }
+      .date { margin: 0 0 26px; color: #697376; font-size: 11px; text-align: center; }
+      .message { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 11px; margin: 0 0 24px; }
+      .avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: #273235; color: #b6ddda; font-size: 11px; font-weight: 800; }
+      .avatar.user { background: #353137; color: #dfd7e6; }
+      .message header { display: flex; gap: 9px; align-items: baseline; }
+      .message strong { font-size: 13px; }
+      .message time { color: #667073; font-size: 11px; }
+      .message p { margin: 5px 0 0; color: #d1d8da; font-size: 14px; line-height: 1.55; }
+      .inference-card { margin-top: 12px; border: 1px solid #355251; border-radius: 9px; background: #172021; overflow: hidden; }
+      .inference-card header { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid #2d3b3d; color: #9bc9c4; font-size: 11px; font-weight: 760; letter-spacing: .06em; text-transform: uppercase; }
+      .inference-card header span { margin-left: auto; color: #8d999b; font-weight: 600; letter-spacing: 0; text-transform: none; }
+      .inference-card p { margin: 0; padding: 11px 12px 4px; color: #cdd6d8; font-size: 12px; line-height: 1.55; }
+      .candidate { display: flex; align-items: center; gap: 9px; margin: 7px 12px 12px; border: 1px solid #3a5554; border-radius: 7px; padding: 9px; background: #101718; }
+      .candidate strong { font-size: 12px; }
+      .candidate span { color: #96a3a5; font-size: 11px; }
+      .candidate-actions { display: flex; gap: 7px; margin-left: auto; }
+      .button { border: 1px solid #3a4849; border-radius: 6px; padding: 7px 9px; background: #232829; color: #d9e2e2; font-size: 11px; font-weight: 700; }
+      .button.primary { border: 0; color: #0a1a18; }
+      .composer { position: sticky; bottom: 0; padding: 15px 28px 22px; border-top: 1px solid #2a2a2a; background: #121212; }
+      .compose-box { display: grid; gap: 10px; width: min(800px, 100%); margin: 0 auto; padding: 11px; border: 1px solid #3b4748; border-radius: 10px; background: #1b1e1e; }
+      textarea { min-height: 48px; resize: none; border: 0; outline: 0; background: transparent; color: #e0e0e0; font-size: 14px; }
+      .compose-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+      .hint { color: #8b9698; font-size: 11px; }
+      .controls { overflow-y: auto; scrollbar-gutter: stable; border-left: 1px solid #2a2a2a; padding: 18px; }
+      .controls-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+      .controls-title { margin: 0; }
+      .refresh { border: 0; background: transparent; color: #9fbab7; font-size: 11px; font-weight: 700; }
+      .card { margin-bottom: 14px; border: 1px solid #2d3435; border-radius: 8px; padding: 13px; background: #1c1c1c; }
+      .card h3 { margin: 0 0 6px; font-size: 13px; }
+      .card > p { margin: 0; color: #8d9699; font-size: 12px; line-height: 1.45; }
+      .project-state { margin-top: 10px; border-radius: 7px; padding: 9px; background: #101415; color: #afbbbc; font-size: 11px; line-height: 1.45; }
+      .project-state strong { display: block; margin-bottom: 2px; color: #c5e1dd; font-size: 12px; }
+      .project-catalog { display: grid; gap: 5px; margin-top: 10px; }
+      .project-row { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 1px solid #303a3a; border-radius: 6px; padding: 7px 8px; background: #151616; color: #c6d0d0; font-size: 11px; text-align: left; }
+      .project-row small { color: #879395; }
+      details { margin-top: 10px; border-top: 1px solid #303636; padding-top: 10px; }
+      summary { color: #b7c5c5; font-size: 11px; font-weight: 700; cursor: pointer; }
+      .form-stack { display: grid; gap: 8px; margin-top: 10px; }
+      input, select { width: 100%; border: 1px solid #3a4445; border-radius: 6px; background: #101010; color: #e0e0e0; padding: 8px; font-size: 12px; }
+      .browse { display: flex; align-items: center; gap: 8px; }
+      .browse button { flex: 0 0 auto; }
+      .browse span { overflow: hidden; color: #8d999b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      label { display: block; margin: 10px 0 5px; color: #aeb8ba; font-size: 11px; font-weight: 700; }
+      .provider-state { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: #8bd5ca; font-size: 11px; }
+      .provider-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #8bd5ca; box-shadow: 0 0 9px rgba(139,213,202,.45); }
+      .route-note { margin-top: 9px !important; color: #849294 !important; font-size: 11px !important; }
+      .terminal-state { display: grid; gap: 7px; margin-top: 9px; border-radius: 6px; padding: 11px; background: #101415; color: #9da8aa; font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; }
+      .terminal-state strong { color: #c5e1dd; font-family: Inter, sans-serif; font-size: 12px; }
+      .future { margin-top: 8px !important; color: #778386 !important; }
+      @media (max-width: 1040px) { .shell { grid-template-columns: 204px minmax(0, 1fr); height: auto; min-height: 100vh; overflow: visible; } .controls { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; overflow: visible; border-top: 1px solid #2a2a2a; border-left: 0; } .controls-heading { grid-column: 1 / -1; margin: 0; } .card { margin: 0; } }
+      @media (max-width: 700px) { .shell { display: block; } .rail { display: none; } .chat { min-height: 100vh; } .chat-header, .composer { padding-inline: 16px; } .feed { padding-inline: 16px; } .local { display: none; } .candidate { align-items: flex-start; flex-wrap: wrap; } .candidate-actions { width: 100%; margin-left: 0; } .controls { display: block; padding: 16px; } .card { margin-bottom: 12px; } }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="rail" aria-label="Assistant thread history">
+        <p class="eyebrow">LOCAL CODING-AGENT HUB</p>
+        <h1 class="brand">AgentRunner</h1>
+        <button class="new-thread" type="button">+ New orchestration thread</button>
+        <nav class="thread-list" aria-label="Recent threads">
+          <h2 class="rail-label">Recent</h2>
+          <button class="thread active" type="button">Continuation workspace<small>Global assistant thread</small></button>
+          <button class="thread" type="button">Research planning<small>Last project: Sengupta Research</small></button>
+          <button class="thread" type="button">Portfolio review<small>Last project: ResumeGenerator</small></button>
+          <button class="thread" type="button">Course prototype<small>Last project: NLP</small></button>
+          <button class="thread" type="button">Backend cleanup<small>Last project: AgentRunner</small></button>
+          <button class="thread" type="button">Agent reliability notes<small>No handoff created</small></button>
+          <button class="thread" type="button">Terminal design<small>Last project: AgentRunner</small></button>
+        </nav>
+      </aside>
+
+      <section class="chat" aria-label="Assistant orchestration thread">
+        <header class="chat-header">
+          <div><h1>Continuation workspace</h1><p>One assistant conversation across projects. A project is confirmed only for a coding handoff.</p></div>
+          <span class="local">LOCAL CONTROL PLANE</span>
+        </header>
+        <div class="feed-wrap">
+          <div class="feed">
+            <p class="date">Today</p>
+            <article class="message">
+              <div class="avatar user">Y</div>
+              <div><header><strong>You</strong><time>10:34 AM</time></header><p>Continue AgentRunner. I want the next deliverable to be a chat-first v0.1 interface that prepares a coding-agent continuation.</p></div>
+            </article>
+            <article class="message">
+              <div class="avatar">AR</div>
+              <div>
+                <header><strong>AgentRunner</strong><time>10:34 AM</time></header>
+                <p>I found a registered project that matches the request. Confirm it before I prepare the continuation brief or launch its coding terminal.</p>
+                <section class="inference-card" aria-label="Project confirmation">
+                  <header>Project target for this handoff <span>Not permanent thread scope</span></header>
+                  <p>Candidate matched from the project name in your request.</p>
+                  <div class="candidate"><div><strong>AgentRunner</strong><span>Registered coding workspace</span></div><div class="candidate-actions"><button class="button primary" type="button">Confirm project</button><button class="button" type="button">Choose another</button></div></div>
+                </section>
+              </div>
+            </article>
+            <article class="message">
+              <div class="avatar user">Y</div>
+              <div><header><strong>You</strong><time>10:35 AM</time></header><p>Use an embedded terminal for now, but retain a path for a pop-out takeover window later.</p></div>
+            </article>
+            <article class="message">
+              <div class="avatar">AR</div>
+              <div><header><strong>AgentRunner</strong><time>10:35 AM</time></header><p>Recorded. This v0.1 handoff will open one embedded project terminal after brief approval. A future pop-out will attach to the same terminal rather than create a second assistant.</p></div>
+            </article>
+            <article class="message">
+              <div class="avatar user">Y</div>
+              <div><header><strong>You</strong><time>10:36 AM</time></header><p>Keep OpenRouter limited to drafting the continuation brief.</p></div>
+            </article>
+          </div>
+        </div>
+        <form class="composer" onsubmit="return false">
+          <div class="compose-box">
+            <textarea aria-label="Requested deliverable" placeholder="Describe the next deliverable or ask about any project..."></textarea>
+            <div class="compose-actions"><span class="hint">No project is permanently attached to this chat.</span><button class="button primary" type="button">Prepare handoff</button></div>
+          </div>
+        </form>
+      </section>
+
+      <aside class="controls" aria-label="Context and provider controls">
+        <div class="controls-heading"><h2 class="controls-title">Request controls</h2><button class="refresh" type="button">Refresh status</button></div>
+        <section class="card"><h3>Project catalog</h3><p>Registered workspaces are available to confirm for a coding handoff. They never limit this conversation.</p><div class="project-state"><strong>Current handoff target</strong>Awaiting confirmation for AgentRunner</div><div class="project-catalog"><button class="project-row" type="button">AgentRunner <small>suggested</small></button><button class="project-row" type="button">ResumeGenerator <small>registered</small></button><button class="project-row" type="button">Sengupta Research <small>registered</small></button></div><details open><summary>Register a project</summary><div class="form-stack"><input aria-label="Project alias" placeholder="Project name or alias"><div class="browse"><button class="button" type="button">Browse folder</button><span>No folder selected</span></div><button class="button" type="button">Add to catalog</button></div></details></section>
+        <section class="card"><h3>Provider route</h3><p>Brief generation is the only v0.1 LLM action.</p><label for="provider">Provider</label><select id="provider"><option>OpenRouter</option></select><span class="provider-state">Healthy</span><label for="model">Free route or fixed free model</label><select id="model"><option>OpenRouter Free Router (openrouter/free)</option><option>nvidia/nemotron-3-ultra:free</option><option>google/gemma-4-31b-it:free</option></select><p class="route-note">The free router is selected by default. The live list refreshes from OpenRouter and only admits model IDs ending in :free.</p></section>
+        <section class="card"><h3>Work surface</h3><div class="terminal-state"><strong>Embedded terminal - v0.1</strong><span>Available after project confirmation and brief approval</span></div><p class="future">vNext: user-triggered pop-out browser window, attached to this same terminal session.</p></section>
+      </aside>
+    </main>
+  </body>
+</html>
