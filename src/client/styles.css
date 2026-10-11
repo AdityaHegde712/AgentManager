@@ -222,6 +222,57 @@ button:disabled {
   line-height: 1.55;
 }
 
+/* Ephemeral In-Feed Progress Card */
+.ephemeral-progress {
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.progress-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 14px;
+  border: 1px solid #2d4543;
+  border-radius: 20px;
+  background: #152223;
+  color: #a8dfd8;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8bd5ca;
+  box-shadow: 0 0 10px #8bd5ca;
+  animation: pulseAnimation 1.4s ease-in-out infinite;
+}
+
+@keyframes pulseAnimation {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.7;
+    box-shadow: 0 0 6px #8bd5ca;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+    box-shadow: 0 0 14px #8bd5ca;
+  }
+}
+
+.progress-text {
+  font-family: Inter, system-ui, sans-serif;
+  letter-spacing: -0.01em;
+}
+
 /* Inference cards */
 .inference-card {
   margin-top: 12px;
@@ -363,18 +414,28 @@ button:disabled {
 }
 
 .brief {
-  min-height: 180px;
+  min-height: 200px;
   width: 100%;
   margin-top: 10px;
   border: 1px solid #314345;
   border-radius: 6px;
   background: #0c1213;
   color: #d8e2e2;
-  padding: 9px;
+  padding: 12px;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.55;
   resize: vertical;
+}
+
+.brief.uncompressed {
+  height: auto;
+  overflow: visible;
+}
+
+.response-card.uncompressed {
+  max-height: none;
+  overflow: visible;
 }
 
 .button-row {
@@ -450,6 +511,7 @@ button:disabled {
   display: block;
   width: 100%;
   min-height: 48px;
+  margin-bottom: 8px;
   border: 0;
   outline: 0;
   background: transparent;
@@ -462,7 +524,7 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .scope {
@@ -632,6 +694,53 @@ button:disabled {
   color: #8bd5ca;
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 10px;
+}
+
+.catalog-actions-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.catalog-form-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.inspector-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.inspector-rename-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.inspector-rename-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #385b57;
+  border-radius: 5px;
+  background: #101415;
+  color: #e0e0e0;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.button.danger {
+  border: 1px solid #6b2d2d;
+  background: #251414;
+  color: #ff9e9e;
+}
+
+.button.danger:hover {
+  background: #351a1a;
+  border-color: #8b3838;
 }
 
 .registration-details, .context-card details {
@@ -822,4 +931,43 @@ input:focus, select:focus, textarea:focus {
   .candidate-actions {
     width: 100%;
   }
+}
+
+/* Duplicate project notification banner */
+.duplicate-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #ff0f0f;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  max-width: 90vw;
+  text-align: center;
+}
+
+.duplicate-banner-dismiss {
+  background: transparent;
+  border: 0;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.duplicate-banner-dismiss:hover {
+  opacity: 1;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { inferProject } from "../../src/client/project-inference.js";
+import { detectUnregisteredPathOrCandidate, inferProject } from "../../src/client/project-inference.js";
 
 
 describe("project inference helper", () => {
@@ -81,3 +81,39 @@ describe("project inference helper", () => {
     });
   });
 });
+
+
+describe("detect unregistered path or candidate helper", () => {
+  it("detects tilde relative paths", () => {
+    const result = detectUnregisteredPathOrCandidate(
+      "continue capstone at ~/Projects/Capstone with deliverable auth",
+    );
+    expect(result).toEqual({
+      candidateAlias: "Capstone",
+      candidatePath: "~/Projects/Capstone",
+    });
+  });
+
+  it("detects windows drive paths", () => {
+    const result = detectUnregisteredPathOrCandidate(
+      "work on project at C:/repos/nlp/classifier please",
+    );
+    expect(result).toEqual({
+      candidateAlias: "classifier",
+      candidatePath: "C:/repos/nlp/classifier",
+    });
+  });
+
+  it("detects project names mentioned after continue or project", () => {
+    const result = detectUnregisteredPathOrCandidate("continue capstone project");
+    expect(result).toEqual({
+      candidateAlias: "capstone",
+    });
+  });
+
+  it("returns null when no candidate or path pattern is present", () => {
+    expect(detectUnregisteredPathOrCandidate("hello world")).toBeNull();
+    expect(detectUnregisteredPathOrCandidate("   ")).toBeNull();
+  });
+});
+
