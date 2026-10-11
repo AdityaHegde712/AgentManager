@@ -67,10 +67,40 @@ export class AgentRunnerApi {
   }
 
 
-  public async addProject(alias: string, root: string): Promise<ProjectAlias> {
+  public async addProject(
+    alias: string,
+    root: string,
+  ): Promise<{ project: ProjectAlias; duplicate_ignored: boolean }> {
     const response = await this.request("/api/v1/projects", {
       method: "POST",
       body: JSON.stringify({ alias, root }),
+    });
+    return (await response.json()) as { project: ProjectAlias; duplicate_ignored: boolean };
+  }
+
+
+  public async scanProjects(
+    directory: string,
+  ): Promise<{ added: ProjectAlias[]; skipped: string[]; duplicates: string[] }> {
+    const response = await this.request("/api/v1/projects/scan", {
+      method: "POST",
+      body: JSON.stringify({ directory }),
+    });
+    return (await response.json()) as { added: ProjectAlias[]; skipped: string[]; duplicates: string[] };
+  }
+
+
+  public async deleteProject(alias: string): Promise<void> {
+    await this.request(`/api/v1/projects/${encodeURIComponent(alias)}`, {
+      method: "DELETE",
+    });
+  }
+
+
+  public async renameProject(oldAlias: string, newAlias: string): Promise<ProjectAlias> {
+    const response = await this.request(`/api/v1/projects/${encodeURIComponent(oldAlias)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ alias: newAlias }),
     });
     return (await response.json() as { project: ProjectAlias }).project;
   }
@@ -85,17 +115,19 @@ export class AgentRunnerApi {
 
 
   public async createBrief(input: {
+    projectAlias?: string;
     providerId: string;
     model: string;
     deliverable: string;
     handoff?: string;
-    stateDocuments: Array<{ path: string; content: string }>;
+    stateDocuments?: Array<{ path: string; content: string }>;
     transcript?: string;
     gitStatus?: string;
   }): Promise<Brief> {
     const response = await this.request("/api/v1/briefs", {
       method: "POST",
       body: JSON.stringify({
+        project_alias: input.projectAlias,
         provider_id: input.providerId,
         model: input.model,
         deliverable: input.deliverable,

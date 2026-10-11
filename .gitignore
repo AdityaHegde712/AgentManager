@@ -1,6 +1,8 @@
 node_modules/
 .npm-cache/
 .agent-tasks/.python/
+.agent-tasks/projects.json
+.agent-tasks/browser-testing
 dist/
 coverage/
 *.log

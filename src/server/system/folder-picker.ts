@@ -26,10 +26,13 @@ export type PickFolderOptions = {
 
 
 const POWERSHELL_COMMAND =
-  "[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; " +
-  "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog; " +
-  "$dialog.Description = 'Select Project Directory'; " +
-  "if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath }";
+  "Add-Type -AssemblyName System.Windows.Forms; " +
+  "$d = New-Object System.Windows.Forms.OpenFileDialog; " +
+  "$d.ValidateNames = $false; " +
+  "$d.CheckFileExists = $false; " +
+  "$d.CheckPathExists = $true; " +
+  "$d.FileName = 'Select Folder'; " +
+  "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output (Split-Path $d.FileName) }";
 
 
 export async function pickFolder(options?: PickFolderOptions | FolderPickerRunner): Promise<FolderPickerResult> {

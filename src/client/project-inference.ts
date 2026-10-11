@@ -7,6 +7,12 @@ export type ProjectInferenceResult =
   | { type: "multiple"; candidates: ProjectAlias[] };
 
 
+export type UnregisteredCandidate = {
+  candidateAlias: string;
+  candidatePath?: string;
+};
+
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -46,4 +52,59 @@ export function inferProject(text: string, projects: ProjectAlias[]): ProjectInf
   }
 
   return { type: "multiple", candidates: uniqueMatches };
+}
+
+
+export function detectUnregisteredPathOrCandidate(text: string): UnregisteredCandidate | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  // 1. Look for explicit path patterns: ~/..., C:/..., /Users/..., etc.
+  const pathRegex = /(?:^|\s)(~[/\\][^\s"',;]+|[a-zA-Z]:[/\\][^\s"',;]+|\/[a-zA-Z0-9_.-]+[/\\][^\s"',;]+)/;
+  const pathMatch = trimmed.match(pathRegex);
+  if (pathMatch && pathMatch[1]) {
+    const rawPath = pathMatch[1].replace(/[.,;:)]+$/, "");
+    const segments = rawPath.split(/[/\\]/).filter(Boolean);
+    const lastSegment = segments[segments.length - 1] ?? "";
+    if (lastSegment && lastSegment !== "~") {
+      return {
+        candidateAlias: lastSegment,
+        candidatePath: rawPath,
+      };
+    }
+  }
+
+  // 2. Look for "project at <path>" or "project in <path>"
+  const projectAtRegex = /(?:project\s+(?:at|in)\s+)([^\s"',;]+)/i;
+  const projectAtMatch = trimmed.match(projectAtRegex);
+  if (projectAtMatch && projectAtMatch[1]) {
+    const rawPath = projectAtMatch[1].replace(/[.,;:)]+$/, "");
+    const segments = rawPath.split(/[/\\]/).filter(Boolean);
+    const lastSegment = segments[segments.length - 1] ?? rawPath;
+    return {
+      candidateAlias: lastSegment,
+      candidatePath: rawPath,
+    };
+  }
+
+  // 3. Look for "continue <name>" or "project <name>"
+  const projectPhraseRegex = /(?:continue\s+([a-zA-Z0-9_-]+)|project\s+([a-zA-Z0-9_-]+))/i;
+  const phraseMatch = trimmed.match(projectPhraseRegex);
+  if (phraseMatch) {
+    const candidateName = phraseMatch[1] ?? phraseMatch[2];
+    if (
+      candidateName &&
+      candidateName.toLowerCase() !== "at" &&
+      candidateName.toLowerCase() !== "in" &&
+      candidateName.toLowerCase() !== "the"
+    ) {
+      return {
+        candidateAlias: candidateName,
+      };
+    }
+  }
+
+  return null;
 }
