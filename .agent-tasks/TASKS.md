@@ -81,3 +81,20 @@ All Sprint 2 Phase 3 tasks completed, tested, and verified.
 
 All Sprint 2 Phase 4 tasks completed, tested, and verified.
 
+15. [x] Sprint 2 - Phase 5: Git Bash Terminal Integration:
+   - [x] Milestone 1: Binary resolution for Git Bash (`src/server/system/binary-resolver.ts`) and bash wrapper command in `src/server/terminals/codex-command.ts` and `terminal-service.ts`.
+   - [x] Milestone 2: Route parameterization (`POST /api/v1/terminals` with `shell: "bash" | "native"`) and frontend launch modal shell selector in `src/client/App.tsx`.
+   - [x] Milestone 3: Automated Playwright browser verification testing Git Bash terminal launch with proof screenshot (`git-bash-verified.png`).
+   - [x] Milestone 4: Full quality gate (`npm test`, `npm run lint`, `npm run build`), milestone commits on `dev`, and push to `origin/dev`.
+
+All Sprint 2 Phase 5 tasks completed, tested, and verified.
+
+16. [x] Sprint 2 - Phase 6: Project Inference Precedence, Stop Words Filter & Card Fallback Selector:
+   - [x] Milestone 1: Verb and preposition stop word blacklist filtering in `detectUnregisteredPathOrCandidate` in `src/client/project-inference.ts`, plus unit tests for failure prompt in `tests/integration/project-inference.test.ts`.
+   - [x] Milestone 2: Precedence inversion (`inferProject` evaluated first) and manual fallback selection dropdown on `confirm-project`, `register-candidate`, and `prompt-project` cards in `src/client/App.tsx` and `src/client/styles.css`.
+   - [x] Milestone 3: Automated Playwright browser verification testing sandbox project inference and card fallback dropdown selection flow with proof screenshot (`sprint2-phase6-verified.png`).
+   - [x] Milestone 4: Full quality gate (`npm test`, `npm run lint`, `npm run build`), milestone commits on `dev`, and push to `origin/dev`.
+
+All Sprint 2 Phase 6 tasks completed, tested, and verified.
+
+

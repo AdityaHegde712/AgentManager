@@ -114,3 +114,30 @@
    - Verify project switching within a single active thread.
    - Verify unused thread guard (clicking new thread repeatedly retains only 1 empty thread).
    - Verify thread renaming and deletion.
+
+### Phase 5: Git Bash Terminal Integration (~1.5 hours)
+1. **Binary Resolution for Git Bash**:
+   - In `src/server/system/binary-resolver.ts`, implement `resolveGitBashExecutable(): string | null` checking standard Git paths (`C:\Program Files\Git\bin\bash.exe`, `C:\Program Files\Git\usr\bin\bash.exe`, etc.) and environment overrides.
+2. **Bash Wrapper Command Generation**:
+   - In `src/server/terminals/codex-command.ts`, support wrapping Codex commands in Git Bash (`bash.exe -l -c "<codex-command>; exec bash"`).
+   - In `src/server/terminals/terminal-service.ts`, spawn `bash.exe` with POSIX environment (`SHELL`, `PATH`) when Git Bash is selected/available. If Codex exits, the PTY drops into an interactive Git Bash session.
+   - Clean fallback to native `codex.exe` when Git Bash is not detected.
+3. **Launch Modal & API Schema**:
+   - Update `terminalSchema` in `src/server/app.ts` to accept `shell: z.enum(["bash", "native"]).optional().default("bash")`.
+   - Update launch modal in `src/client/App.tsx` with a shell selector (defaults to "Git Bash" when available).
+4. **Playwright E2E Verification & Quality Gate**:
+   - Verify terminal launch via Git Bash, assertion of bash environment, and post-exit bash prompt.
+   - Run unit/integration tests and push to `origin/dev`.
+
+### Phase 6: Project Inference Precedence, Stop Words Filter, and Manual Fallback (~1 hour)
+1. **Precedence Inversion Fix**:
+   - In `src/client/App.tsx`, evaluate `inferProject(promptText, projects)` before `detectUnregisteredPathOrCandidate(promptText)` so registered catalog entries always take priority over unregistered phrase heuristics.
+2. **Verb / Stop Word Filtering in Phrase Extraction**:
+   - In `src/client/project-inference.ts`, blacklist common English verbs and stop words (`needs`, `has`, `is`, `was`, `requires`, `wants`, `contains`, `creates`, `updates`, `runs`, etc.) from matching `project <word>`.
+   - Add unit test asserting `"My sandbox project needs a new AGENTS.md so can we set up the brief for that?"` infers `'sandbox'`.
+3. **Manual Selection Fallback on Cards**:
+   - Add a 3rd option ("Select from registered projects...") on `register-candidate`, `confirm-project`, and `prompt-project` cards with a clean dropdown of existing registered workspaces.
+   - Picking a project immediately attaches it to thread scope and prepares the brief.
+4. **Playwright E2E Verification & Quality Gate**:
+   - Verify prompt `"My sandbox project needs a new AGENTS.md so can we set up the brief for that?"` accurately scopes to `sandbox`.
+   - Verify card third option manual selection flow.

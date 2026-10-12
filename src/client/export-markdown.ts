@@ -24,6 +24,7 @@ export type ChatCard =
   | {
       type: "prompt-project";
       prompt: string;
+      userDeliverable?: string;
     }
   | {
       type: "brief";
@@ -64,7 +65,7 @@ export function generateConversationMarkdown(params: {
       lines.push("## User");
       lines.push("");
       let userQuery = msg.text ?? "";
-      if (!userQuery && msg.card && "userDeliverable" in msg.card) {
+      if (!userQuery && msg.card && "userDeliverable" in msg.card && msg.card.userDeliverable) {
         userQuery = msg.card.userDeliverable;
       }
       lines.push(userQuery);

@@ -48,3 +48,48 @@ export function resolveCodexExecutable(): string {
 
   return "codex";
 }
+
+
+export function resolveGitBashExecutable(): string | null {
+  if (process.env.GIT_BASH_COMMAND && process.env.GIT_BASH_COMMAND.trim()) {
+    return process.env.GIT_BASH_COMMAND.trim();
+  }
+
+  const standardCandidates: string[] = [
+    "C:\\Program Files\\Git\\bin\\bash.exe",
+    "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+  ];
+
+  const localAppData = process.env.LOCALAPPDATA;
+  if (localAppData) {
+    standardCandidates.push(join(localAppData, "Programs", "Git", "bin", "bash.exe"));
+  }
+
+  for (const candidate of standardCandidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  try {
+    const lookupCmd = process.platform === "win32" ? "where.exe" : "which";
+    const stdout = execFileSync(lookupCmd, ["bash"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const lines = stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    for (const line of lines) {
+      if (existsSync(line)) {
+        return line;
+      }
+    }
+  } catch {
+    // Ignore error if lookup command fails or not found
+  }
+
+  return null;
+}

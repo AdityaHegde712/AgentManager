@@ -489,6 +489,33 @@ button:disabled {
   flex-shrink: 0;
 }
 
+.card-fallback-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 12px 12px;
+  padding: 8px 10px;
+  border: 1px solid #314345;
+  border-radius: 6px;
+  background: #121212;
+}
+
+.card-fallback-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #314345;
+  border-radius: 5px;
+  background: #121212;
+  color: #d8e2e2;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.card-fallback-select:focus {
+  border-color: #4a706e;
+}
+
 /* Response card & Brief */
 .response-card, .work-surface {
   margin-top: 12px;

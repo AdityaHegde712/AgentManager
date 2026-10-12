@@ -68,6 +68,7 @@ export function App(): React.JSX.Element {
   const [launchMode, setLaunchMode] = useState<"resume" | "new">("resume");
   const [launchModel, setLaunchModel] = useState("gpt-5.6-terra");
   const [launchReasoning, setLaunchReasoning] = useState<"low" | "medium" | "high">("medium");
+  const [launchShell, setLaunchShell] = useState<"bash" | "native">("bash");
   const [message, setMessage] = useState("Refreshing local provider status.");
   const [confirmedProject, setConfirmedProject] = useState<ProjectAlias>();
   const [inspectedAlias, setInspectedAlias] = useState<string>();
@@ -635,29 +636,7 @@ export function App(): React.JSX.Element {
       }
     };
 
-    // 1. Run detectUnregisteredPathOrCandidate(promptText): if found, show register-candidate card.
-    const unregistered = detectUnregisteredPathOrCandidate(promptText);
-    if (unregistered) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          card: {
-            type: "register-candidate",
-            candidateAlias: unregistered.candidateAlias,
-            candidatePath: unregistered.candidatePath,
-            userDeliverable: promptText,
-          },
-        },
-      ]);
-      setMessage(
-        `Project ${unregistered.candidateAlias} is not registered yet. Register it to continue.`,
-      );
-      return;
-    }
-
-    // 2. Run inferProject(promptText, projects):
+    // 1. Run inferProject(promptText, projects) FIRST before checking detectUnregisteredPathOrCandidate
     const inference: ProjectInferenceResult = inferProject(promptText, projects);
 
     if (inference.type === "multiple") {
@@ -700,26 +679,48 @@ export function App(): React.JSX.Element {
       return;
     }
 
-    if (inference.type === "none" && !unregistered) {
-      if (effectiveProject) {
-        await draftBriefWithProject(effectiveProject);
-        return;
-      }
-
+    // 2. inference.type === "none": ONLY THEN check detectUnregisteredPathOrCandidate(promptText)
+    const unregistered = detectUnregisteredPathOrCandidate(promptText);
+    if (unregistered) {
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
           card: {
-            type: "prompt-project",
-            prompt:
-              "No matching registered project found. Please select or register a project from the catalog at right.",
+            type: "register-candidate",
+            candidateAlias: unregistered.candidateAlias,
+            candidatePath: unregistered.candidatePath,
+            userDeliverable: promptText,
           },
         },
       ]);
-      setMessage("No matching project found. Please select or register one from the catalog.");
+      setMessage(
+        `Project ${unregistered.candidateAlias} is not registered yet. Register it to continue.`,
+      );
+      return;
     }
+
+    // 3. Not unregistered either: continue with effectiveProject if present, else prompt
+    if (effectiveProject) {
+      await draftBriefWithProject(effectiveProject);
+      return;
+    }
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        card: {
+          type: "prompt-project",
+          prompt:
+            "No matching registered project found. Please select or register a project from the catalog at right.",
+          userDeliverable: promptText,
+        },
+      },
+    ]);
+    setMessage("No matching project found. Please select or register one from the catalog.");
   };
 
   const openLaunchModal = (): void => {
@@ -742,6 +743,7 @@ export function App(): React.JSX.Element {
         mode: launchMode,
         model: launchModel,
         reasoningEffort: launchReasoning,
+        shell: launchShell,
       });
       setTerminalId(terminal.terminal_id);
       setIsLaunchModalOpen(false);
@@ -757,6 +759,65 @@ export function App(): React.JSX.Element {
       setMessage("Approved brief copied. Paste it into the live Codex terminal when ready.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The browser could not copy the approved brief.");
+    }
+  };
+
+  const handleFallbackProjectSelect = async (
+    targetAlias: string,
+    cardMessageId: string,
+    deliverableText?: string,
+  ): Promise<void> => {
+    if (!targetAlias) {
+      return;
+    }
+    const chosenProject = projects.find((p) => p.alias === targetAlias);
+    if (!chosenProject) {
+      return;
+    }
+
+    setMessages((prev) => prev.filter((m) => m.id !== cardMessageId));
+    attachProjectToThread(chosenProject);
+    setMessage(`Selected project ${chosenProject.alias}. Drafting brief...`);
+
+    const textToUse = deliverableText?.trim() || deliverable.trim();
+    if (textToUse) {
+      if (selectedProvider?.status !== "healthy") {
+        setMessage("Selected provider is not healthy.");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            text: "Cannot draft continuation brief: provider is not healthy.",
+          },
+        ]);
+        return;
+      }
+
+      try {
+        const nextBrief = await runWithProgress(() => createBriefForText(chosenProject, textToUse));
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            text: `Selected project ${chosenProject.alias}. Continuation brief prepared.`,
+            card: { type: "brief", brief: nextBrief },
+          },
+        ]);
+        setMessage("Brief drafted. Review and approve it before opening Codex.");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Unable to draft the brief.";
+        setMessage(msg);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            text: `Error drafting brief: ${msg}`,
+          },
+        ]);
+      }
     }
   };
 
@@ -836,6 +897,26 @@ export function App(): React.JSX.Element {
                 Choose another
               </button>
             </div>
+          </div>
+          <div className="card-fallback-row">
+            <select
+              aria-label="Select registered project"
+              className="card-fallback-select"
+              defaultValue=""
+              onChange={(e) => {
+                const targetAlias = e.target.value;
+                if (targetAlias) {
+                  void handleFallbackProjectSelect(targetAlias, msg.id, card.userDeliverable);
+                }
+              }}
+            >
+              <option value="">Select from registered projects...</option>
+              {projects.map((p) => (
+                <option key={p.alias} value={p.alias}>
+                  {p.alias}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       );
@@ -950,6 +1031,26 @@ export function App(): React.JSX.Element {
               </button>
             </div>
           </div>
+          <div className="card-fallback-row">
+            <select
+              aria-label="Select registered project"
+              className="card-fallback-select"
+              defaultValue=""
+              onChange={(e) => {
+                const targetAlias = e.target.value;
+                if (targetAlias) {
+                  void handleFallbackProjectSelect(targetAlias, msg.id, card.userDeliverable);
+                }
+              }}
+            >
+              <option value="">Select from registered projects...</option>
+              {projects.map((p) => (
+                <option key={p.alias} value={p.alias}>
+                  {p.alias}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       );
     }
@@ -959,6 +1060,26 @@ export function App(): React.JSX.Element {
         <div className="inference-card" aria-label="Project selection prompt">
           <header>Project selection <span>Action needed</span></header>
           <p>{card.prompt}</p>
+          <div className="card-fallback-row">
+            <select
+              aria-label="Select registered project"
+              className="card-fallback-select"
+              defaultValue=""
+              onChange={(e) => {
+                const targetAlias = e.target.value;
+                if (targetAlias) {
+                  void handleFallbackProjectSelect(targetAlias, msg.id, card.userDeliverable);
+                }
+              }}
+            >
+              <option value="">Select from registered projects...</option>
+              {projects.map((p) => (
+                <option key={p.alias} value={p.alias}>
+                  {p.alias}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       );
     }
@@ -1442,6 +1563,38 @@ export function App(): React.JSX.Element {
                   <div className="modal-radio-label">
                     <strong>Start new session</strong>
                     <small>Starts a fresh Codex session in project root</small>
+                  </div>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className="modal-field">
+              <legend className="modal-legend">Shell environment</legend>
+              <div className="modal-radio-group">
+                <label className={`modal-radio-option ${launchShell === "bash" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="launch-shell"
+                    value="bash"
+                    checked={launchShell === "bash"}
+                    onChange={() => setLaunchShell("bash")}
+                  />
+                  <div className="modal-radio-label">
+                    <strong>Git Bash (recommended)</strong>
+                    <small>Runs inside Git Bash with POSIX commands (ls, git, grep); drops into an interactive bash prompt if Codex exits</small>
+                  </div>
+                </label>
+                <label className={`modal-radio-option ${launchShell === "native" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="launch-shell"
+                    value="native"
+                    checked={launchShell === "native"}
+                    onChange={() => setLaunchShell("native")}
+                  />
+                  <div className="modal-radio-label">
+                    <strong>Native Windows</strong>
+                    <small>Direct codex.exe execution in Windows ConPTY</small>
                   </div>
                 </label>
               </div>

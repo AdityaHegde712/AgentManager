@@ -55,6 +55,53 @@ export function inferProject(text: string, projects: ProjectAlias[]): ProjectInf
 }
 
 
+const STOP_WORDS = new Set([
+  "needs",
+  "need",
+  "has",
+  "have",
+  "had",
+  "is",
+  "was",
+  "are",
+  "were",
+  "requires",
+  "require",
+  "wants",
+  "want",
+  "contains",
+  "contain",
+  "creates",
+  "create",
+  "updates",
+  "update",
+  "runs",
+  "run",
+  "at",
+  "in",
+  "the",
+  "a",
+  "an",
+  "to",
+  "for",
+  "with",
+  "from",
+  "on",
+  "by",
+  "about",
+  "into",
+  "through",
+  "during",
+  "before",
+  "after",
+  "above",
+  "below",
+  "under",
+  "behind",
+  "next",
+]);
+
+
 export function detectUnregisteredPathOrCandidate(text: string): UnregisteredCandidate | null {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -89,17 +136,11 @@ export function detectUnregisteredPathOrCandidate(text: string): UnregisteredCan
     };
   }
 
-  // 3. Look for "continue <name>" or "project <name>"
-  const projectPhraseRegex = /(?:continue\s+([a-zA-Z0-9_-]+)|project\s+([a-zA-Z0-9_-]+))/i;
-  const phraseMatch = trimmed.match(projectPhraseRegex);
-  if (phraseMatch) {
-    const candidateName = phraseMatch[1] ?? phraseMatch[2];
-    if (
-      candidateName &&
-      candidateName.toLowerCase() !== "at" &&
-      candidateName.toLowerCase() !== "in" &&
-      candidateName.toLowerCase() !== "the"
-    ) {
+  // 3. Look for "continue <name>", "project <name>", or "work on <name>"
+  const projectPhraseRegex = /(?:continue\s+([a-zA-Z0-9_-]+)|project\s+([a-zA-Z0-9_-]+)|work\s+on\s+([a-zA-Z0-9_-]+))/gi;
+  for (const phraseMatch of trimmed.matchAll(projectPhraseRegex)) {
+    const candidateName = phraseMatch[1] ?? phraseMatch[2] ?? phraseMatch[3];
+    if (candidateName && !STOP_WORDS.has(candidateName.toLowerCase())) {
       return {
         candidateAlias: candidateName,
       };
