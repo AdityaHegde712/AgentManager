@@ -4,13 +4,49 @@ export type CommandSpec = {
 };
 
 
-export function buildCodexResumePicker(codexCommand: string): CommandSpec {
-  if (!codexCommand.trim()) {
+export type CodexLaunchOptions = {
+  mode?: "resume" | "new";
+  model?: string;
+  reasoningEffort?: "low" | "medium" | "high";
+  sessionId?: string;
+};
+
+
+export function buildCodexCommand(command: string, options?: CodexLaunchOptions): CommandSpec {
+  if (!command.trim()) {
     throw new Error("Codex command must not be empty.");
   }
 
+  const mode = options?.mode ?? "resume";
+  const args: string[] = [];
+
+  if (mode === "resume") {
+    args.push("resume");
+    if (options?.sessionId) {
+      args.push(options.sessionId);
+    } else {
+      args.push("--all");
+    }
+    args.push("--no-alt-screen");
+  } else {
+    args.push("--no-alt-screen");
+  }
+
+  if (options?.model) {
+    args.push("-m", options.model);
+  }
+
+  if (options?.reasoningEffort) {
+    args.push("-c", `model_reasoning_effort="${options.reasoningEffort}"`);
+  }
+
   return {
-    command: codexCommand,
-    args: ["resume", "--all", "--no-alt-screen"],
+    command,
+    args,
   };
+}
+
+
+export function buildCodexResumePicker(codexCommand: string): CommandSpec {
+  return buildCodexCommand(codexCommand, { mode: "resume" });
 }

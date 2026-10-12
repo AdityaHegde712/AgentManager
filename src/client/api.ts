@@ -30,6 +30,26 @@ export type Brief = {
 };
 
 
+export type ThreadSummary = {
+  id: string;
+  title: string;
+  projectAlias?: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+};
+
+
+export type ThreadRecord<T = unknown> = {
+  id: string;
+  title: string;
+  projectAlias?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: T[];
+};
+
+
 export class AgentRunnerApi {
   private readonly token: string;
 
@@ -141,12 +161,81 @@ export class AgentRunnerApi {
   }
 
 
-  public async startTerminal(projectAlias: string): Promise<{ terminal_id: string }> {
+  public async startTerminal(
+    projectAlias: string,
+    options?: {
+      mode?: "resume" | "new";
+      model?: string;
+      reasoningEffort?: "low" | "medium" | "high";
+    },
+  ): Promise<{ terminal_id: string }> {
     const response = await this.request("/api/v1/terminals", {
       method: "POST",
-      body: JSON.stringify({ project_alias: projectAlias }),
+      body: JSON.stringify({
+        project_alias: projectAlias,
+        mode: options?.mode,
+        model: options?.model,
+        reasoning_effort: options?.reasoningEffort,
+      }),
     });
     return await response.json() as { terminal_id: string };
+  }
+
+
+  public async listThreads(): Promise<ThreadSummary[]> {
+    const response = await this.request("/api/v1/threads");
+    const data = await response.json() as { threads: ThreadSummary[] } | ThreadSummary[];
+    return Array.isArray(data) ? data : data.threads;
+  }
+
+
+  public async getThread<T = unknown>(threadId: string): Promise<ThreadRecord<T>> {
+    const response = await this.request(`/api/v1/threads/${encodeURIComponent(threadId)}`);
+    const data = await response.json() as { thread: ThreadRecord<T> } | ThreadRecord<T>;
+    return "thread" in data ? data.thread : data;
+  }
+
+
+  public async createThread<T = unknown>(input?: {
+    title?: string;
+    projectAlias?: string;
+  }): Promise<ThreadRecord<T>> {
+    const response = await this.request("/api/v1/threads", {
+      method: "POST",
+      body: JSON.stringify(input ?? {}),
+    });
+    const data = await response.json() as { thread: ThreadRecord<T> } | ThreadRecord<T>;
+    return "thread" in data ? data.thread : data;
+  }
+
+
+  public async saveMessages<T = unknown>(threadId: string, messages: T[]): Promise<ThreadRecord<T>> {
+    const response = await this.request(`/api/v1/threads/${encodeURIComponent(threadId)}/messages`, {
+      method: "PUT",
+      body: JSON.stringify({ messages }),
+    });
+    const data = await response.json() as { thread: ThreadRecord<T> } | ThreadRecord<T>;
+    return "thread" in data ? data.thread : data;
+  }
+
+
+  public async updateThread<T = unknown>(
+    threadId: string,
+    updates: { title?: string; projectAlias?: string | null },
+  ): Promise<ThreadRecord<T>> {
+    const response = await this.request(`/api/v1/threads/${encodeURIComponent(threadId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    });
+    const data = await response.json() as { thread: ThreadRecord<T> } | ThreadRecord<T>;
+    return "thread" in data ? data.thread : data;
+  }
+
+
+  public async deleteThread(threadId: string): Promise<void> {
+    await this.request(`/api/v1/threads/${encodeURIComponent(threadId)}`, {
+      method: "DELETE",
+    });
   }
 
 

@@ -1,6 +1,6 @@
 import * as pty from "node-pty";
 
-import { buildCodexResumePicker } from "./codex-command.js";
+import { buildCodexCommand, type CodexLaunchOptions } from "./codex-command.js";
 
 
 type OutputListener = (data: string) => void;
@@ -24,12 +24,12 @@ export class TerminalService {
   ) {}
 
 
-  public start(terminalId: string, cwd: string): void {
+  public start(terminalId: string, cwd: string, options?: CodexLaunchOptions): void {
     if (this.terminals.has(terminalId)) {
       throw new Error(`Terminal ${terminalId} is already running.`);
     }
 
-    const spec = buildCodexResumePicker(this.codexCommand);
+    const spec = buildCodexCommand(this.codexCommand, options);
     const terminal = pty.spawn(spec.command, spec.args, {
       cwd,
       cols: 120,
