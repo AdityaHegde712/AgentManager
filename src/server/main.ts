@@ -6,7 +6,7 @@ import { ProviderRegistry } from "./providers/provider-registry.js";
 import { createLaunchToken } from "./security/launch-token.js";
 import { createLaunchUrl } from "./security/launch-url.js";
 import { SessionManager } from "./sessions/session-manager.js";
-import { resolveCodexExecutable } from "./system/binary-resolver.js";
+import { resolveCodexExecutable, resolveGitBashExecutable } from "./system/binary-resolver.js";
 import { TerminalService } from "./terminals/terminal-service.js";
 import { ThreadStorage } from "./threads/thread-storage.js";
 
@@ -17,9 +17,13 @@ const host = "127.0.0.1";
 const port = Number.parseInt(process.env.AGENT_RUNNER_PORT ?? "4310", 10);
 const launchToken = createLaunchToken();
 const sessions = new SessionManager(2);
-const terminals = new TerminalService(resolveCodexExecutable(), (terminalId) => {
-  sessions.release(terminalId);
-});
+const terminals = new TerminalService(
+  resolveCodexExecutable(),
+  (terminalId) => {
+    sessions.release(terminalId);
+  },
+  resolveGitBashExecutable(),
+);
 const providers = new ProviderRegistry([
   createOpenRouterProvider({
     apiKey: process.env.OPENROUTER_API_KEY,

@@ -167,6 +167,7 @@ export class AgentRunnerApi {
       mode?: "resume" | "new";
       model?: string;
       reasoningEffort?: "low" | "medium" | "high";
+      shell?: "bash" | "native";
     },
   ): Promise<{ terminal_id: string }> {
     const response = await this.request("/api/v1/terminals", {
@@ -176,6 +177,7 @@ export class AgentRunnerApi {
         mode: options?.mode,
         model: options?.model,
         reasoning_effort: options?.reasoningEffort,
+        shell: options?.shell,
       }),
     });
     return await response.json() as { terminal_id: string };

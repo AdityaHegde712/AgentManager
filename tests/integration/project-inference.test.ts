@@ -80,6 +80,18 @@ describe("project inference helper", () => {
       project: { alias: "AgentRunner", root: "C:/Projects/AgentRunner1" },
     });
   });
+
+  it("infers sandbox project alias from prompt with trailing verb stop words", () => {
+    expect(
+      inferProject(
+        "My sandbox project needs a new AGENTS.md so can we set up the brief for that?",
+        [{ alias: "sandbox", root: "C:/Projects/sandbox" }],
+      ),
+    ).toEqual({
+      type: "single",
+      project: { alias: "sandbox", root: "C:/Projects/sandbox" },
+    });
+  });
 });
 
 
@@ -114,6 +126,14 @@ describe("detect unregistered path or candidate helper", () => {
   it("returns null when no candidate or path pattern is present", () => {
     expect(detectUnregisteredPathOrCandidate("hello world")).toBeNull();
     expect(detectUnregisteredPathOrCandidate("   ")).toBeNull();
+  });
+
+  it("filters out stop words like needs from project phrase matches", () => {
+    expect(
+      detectUnregisteredPathOrCandidate(
+        "My sandbox project needs a new AGENTS.md so can we set up the brief for that?",
+      ),
+    ).toBeNull();
   });
 });
 

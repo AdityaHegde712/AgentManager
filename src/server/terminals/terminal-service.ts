@@ -1,6 +1,6 @@
 import * as pty from "node-pty";
 
-import { buildCodexCommand, type CodexLaunchOptions } from "./codex-command.js";
+import { buildCodexCommand, buildGitBashCommand, type CodexLaunchOptions } from "./codex-command.js";
 
 
 type OutputListener = (data: string) => void;
@@ -21,21 +21,37 @@ export class TerminalService {
   public constructor(
     private readonly codexCommand: string,
     private readonly onExit: (terminalId: string) => void,
+    private readonly gitBashCommand?: string | null,
   ) {}
 
 
-  public start(terminalId: string, cwd: string, options?: CodexLaunchOptions): void {
+  public start(terminalId: string, cwd: string, options?: CodexLaunchOptions, gitBashCommand?: string | null): void {
     if (this.terminals.has(terminalId)) {
       throw new Error(`Terminal ${terminalId} is already running.`);
     }
 
-    const spec = buildCodexCommand(this.codexCommand, options);
+    const bashCandidate = gitBashCommand !== undefined ? gitBashCommand : this.gitBashCommand;
+    const gitBashPath = bashCandidate && bashCandidate.trim().length > 0 ? bashCandidate.trim() : null;
+    const useBash = options?.shell !== "native" && Boolean(gitBashPath);
+
+    const spec = useBash
+      ? buildGitBashCommand(this.codexCommand, options, gitBashPath)
+      : buildCodexCommand(this.codexCommand, options);
+
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      TERM: "xterm-256color",
+    };
+    if (useBash && gitBashPath) {
+      env.SHELL = gitBashPath;
+    }
+
     const terminal = pty.spawn(spec.command, spec.args, {
       cwd,
       cols: 120,
       rows: 32,
       name: "xterm-256color",
-      env: { ...process.env, TERM: "xterm-256color" },
+      env: env as Record<string, string>,
     });
     const managed: ManagedTerminal = {
       process: terminal,

@@ -40,6 +40,7 @@ const terminalSchema = z.object({
   mode: z.enum(["resume", "new"]).optional().default("resume"),
   model: z.string().optional().default("gpt-5.6-terra"),
   reasoning_effort: z.enum(["low", "medium", "high"]).optional().default("medium"),
+  shell: z.enum(["bash", "native"]).optional().default("bash"),
 });
 const threadIdParamsSchema = z.object({ threadId: z.string().min(1) });
 const createThreadSchema = z.object({ title: z.string().optional(), projectAlias: z.string().optional() });
@@ -293,6 +294,7 @@ export async function createApplication(dependencies: ApplicationDependencies): 
         mode: input.mode,
         model: input.model,
         reasoningEffort: input.reasoning_effort,
+        shell: input.shell,
       });
       reply.header("set-cookie", createTerminalSessionCookie(dependencies.launchToken));
       await reply.code(201).send({ terminal_id: reservation.id, project });

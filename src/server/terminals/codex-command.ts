@@ -9,6 +9,7 @@ export type CodexLaunchOptions = {
   model?: string;
   reasoningEffort?: "low" | "medium" | "high";
   sessionId?: string;
+  shell?: "bash" | "native";
 };
 
 
@@ -49,4 +50,31 @@ export function buildCodexCommand(command: string, options?: CodexLaunchOptions)
 
 export function buildCodexResumePicker(codexCommand: string): CommandSpec {
   return buildCodexCommand(codexCommand, { mode: "resume" });
+}
+
+
+export function buildGitBashCommand(
+  codexCommand: string,
+  options?: CodexLaunchOptions,
+  bashPath?: string | null,
+): CommandSpec {
+  const baseSpec = buildCodexCommand(codexCommand, options);
+  if (options?.shell !== "native" && bashPath && bashPath.trim().length > 0) {
+    const normalizedCommand = baseSpec.command.replace(/\\/g, "/").replace(/^["']|["']$/g, "");
+    const commandPart = `"${normalizedCommand}"`;
+    const formattedArgs = baseSpec.args.map((arg) => {
+      const normalizedArg = arg.replace(/\\/g, "/");
+      if (normalizedArg.includes(" ") && !normalizedArg.startsWith('"') && !normalizedArg.startsWith("'")) {
+        return `"${normalizedArg}"`;
+      }
+      return normalizedArg;
+    });
+    const codexInvocation = [commandPart, ...formattedArgs].join(" ");
+    return {
+      command: bashPath.trim(),
+      args: ["-l", "-i", "-c", `${codexInvocation}; exec bash`],
+    };
+  }
+
+  return baseSpec;
 }
