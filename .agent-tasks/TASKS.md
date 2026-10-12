@@ -41,3 +41,43 @@ All Phase 2 steps completed and verified with Playwright end-to-end browser auto
    - [x] Step 6: Git commit with conventional prefixes and push `feature/assistant-v0-1` to origin.
 
 All Phase 4 tasks completed, tested, and verified.
+
+## Sprint 2 Tasks
+
+11. [x] Sprint 2 - Phase 1: Context Rail Cleanup, Catalog Truncation & UI Polish:
+   - [x] Step 1: Prune manual handoff, state documents, and git status textareas from Context Packet in `src/client/App.tsx`, retaining only the optional transcript input.
+   - [x] Step 2: Style transcript textarea in `src/client/styles.css` to be vertically expandable up to `max-height: 240px` with internal vertical scrolling beyond that.
+   - [x] Step 3: Fix Provider route radio layout in `src/client/styles.css` to eliminate excessive bullet width.
+   - [x] Step 4: Implement project catalog truncation in `src/client/App.tsx` (show first 5 projects by default with "Show all ({total})" / "Show fewer" toggle, keeping registration and directory scan permanently visible).
+   - [x] Step 5: Automated Playwright browser verification testing catalog truncation, transcript textarea sizing, and provider radio width.
+   - [x] Step 6: Run unit/integration tests (`npm test`), ESLint (`npm run lint`), and build (`npm run build`).
+   - [x] Step 7: Git commit on `dev` branch with conventional message.
+
+All Sprint 2 Phase 1 tasks completed, tested, and verified.
+
+12. [x] Sprint 2 - Phase 2: Conversation Threading, Server Persistence & Markdown Export:
+   - [x] Milestone 1: Backend thread storage service (`src/server/threads/thread-storage.ts`) and REST endpoints (`/api/v1/threads`) with integration tests (`tests/integration/thread-storage.test.ts`).
+   - [x] Milestone 2: Frontend thread management in `src/client/App.tsx` and `src/client/api.ts` (`+ New orchestration thread`, left rail switcher, persistent message sync).
+   - [x] Milestone 3: Codex-formatted Markdown conversation export (`# AgentRunner Conversation - {timestamp}`, `## User`, `## Agent`) and download trigger.
+   - [x] Milestone 4: Automated Playwright browser verification testing thread lifecycle, restart persistence, and markdown export with screenshot.
+   - [x] Milestone 5: Full test suite (`npm test`), ESLint (`npm run lint`), build (`npm run build`), and milestone commits on `dev`.
+
+All Sprint 2 Phase 2 tasks completed, tested, and verified.
+
+13. [x] Sprint 2 - Phase 3: Interactive Codex Launch Dialog & PTY Parameterization:
+   - [x] Milestone 1: Binary resolution service (`src/server/system/binary-resolver.ts`), parameterized codex command builder (`src/server/terminals/codex-command.ts`), and updated `POST /api/v1/terminals` route with unit/integration tests.
+   - [x] Milestone 2: Interactive Codex Launch Configuration Modal in `src/client/App.tsx` (mode selector, model defaulting to `gpt-5.6-terra`, reasoning effort defaulting to `medium`).
+   - [x] Milestone 3: Playwright browser verification script testing launch dialog, parameter transmission, and terminal canvas mounting with proof screenshot.
+   - [x] Milestone 4: Full quality gate (`npm test`, `npm run lint`, `npm run build`), milestone commits, and push to `origin/dev`.
+
+All Sprint 2 Phase 3 tasks completed, tested, and verified.
+
+14. [x] Sprint 2 - Phase 4: Thread Lifecycle Controls & Dynamic Multi-Project Scoping:
+   - [x] Milestone 1: Dynamic project re-scoping in `src/client/App.tsx` (evaluate project inference on every prompt; trigger resolution if a different project or path is detected rather than forcing previous scope).
+   - [x] Milestone 2: Unused thread guard in `src/client/App.tsx` (clicking "+ New orchestration thread" re-routes to existing empty/unused thread if present; at most 1 unused thread).
+   - [x] Milestone 3: Thread rename and delete actions in `src/client/App.tsx` and `src/client/styles.css` (hover pencil icon for renaming, delete button, sync with backend `updateThread` and `deleteThread`).
+   - [x] Milestone 4: Automated Playwright browser verification testing multi-project switching within a thread, unused thread guard, and rename/delete.
+   - [x] Milestone 5: Full quality gate (`npm test`, `npm run lint`, `npm run build`), milestone commits, and push to `origin/dev`.
+
+All Sprint 2 Phase 4 tasks completed, tested, and verified.
+

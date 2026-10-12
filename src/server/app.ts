@@ -14,6 +14,7 @@ import { createTerminalSessionCookie, readTerminalSessionToken } from "./securit
 import { SessionManager } from "./sessions/session-manager.js";
 import { pickFolder, type FolderPickerRunner } from "./system/folder-picker.js";
 import { TerminalService } from "./terminals/terminal-service.js";
+import { ThreadStorage } from "./threads/thread-storage.js";
 
 
 const tokenHeader = "x-agent-runner-token";
@@ -25,6 +26,7 @@ type ApplicationDependencies = {
   projects: ProjectRegistry;
   sessions: SessionManager;
   terminals: TerminalService;
+  threads?: ThreadStorage;
   pickFolder?: FolderPickerRunner;
 };
 
@@ -33,7 +35,15 @@ const projectSchema = z.object({ alias: z.string().min(1), root: z.string().min(
 const projectScanSchema = z.object({ directory: z.string().min(1) });
 const projectAliasParamsSchema = z.object({ alias: z.string().min(1) });
 const renameProjectSchema = z.object({ alias: z.string().min(1) });
-const terminalSchema = z.object({ project_alias: z.string().min(1) });
+const terminalSchema = z.object({
+  project_alias: z.string().min(1),
+  mode: z.enum(["resume", "new"]).optional().default("resume"),
+  model: z.string().optional().default("gpt-5.6-terra"),
+  reasoning_effort: z.enum(["low", "medium", "high"]).optional().default("medium"),
+});
+const threadIdParamsSchema = z.object({ threadId: z.string().min(1) });
+const createThreadSchema = z.object({ title: z.string().optional(), projectAlias: z.string().optional() });
+const updateThreadSchema = z.object({ title: z.string().optional(), projectAlias: z.string().nullable().optional() });
 const briefSchema = z.object({
   project_alias: z.string().optional(),
   provider_id: z.string().min(1),
@@ -83,8 +93,74 @@ export async function createApplication(dependencies: ApplicationDependencies): 
   });
 
   const folderPicker = dependencies.pickFolder ?? pickFolder;
+  const threads = dependencies.threads ?? new ThreadStorage();
 
   app.get("/api/v1/health", async () => ({ status: "ok" }));
+
+  app.get("/api/v1/threads", async () => ({ threads: await threads.listThreads() }));
+
+  app.post("/api/v1/threads", async (request, reply) => {
+    const input = request.body ? createThreadSchema.parse(request.body) : {};
+    const thread = await threads.createThread(input);
+    await reply.code(201).send({ thread });
+  });
+
+  app.get("/api/v1/threads/:threadId", async (request, reply) => {
+    const params = threadIdParamsSchema.parse(request.params);
+    const thread = await threads.getThread(params.threadId);
+    if (!thread) {
+      await reply.code(404).send({ error: `Thread not found: ${params.threadId}` });
+      return;
+    }
+    await reply.code(200).send({ thread });
+  });
+
+  app.put("/api/v1/threads/:threadId/messages", async (request, reply) => {
+    const params = threadIdParamsSchema.parse(request.params);
+    const body = request.body;
+    const messages = Array.isArray(body)
+      ? body
+      : typeof body === "object" && body !== null && "messages" in body && Array.isArray((body as { messages: unknown[] }).messages)
+        ? (body as { messages: unknown[] }).messages
+        : undefined;
+
+    if (!messages) {
+      await reply.code(400).send({ error: "Missing or invalid messages array" });
+      return;
+    }
+
+    try {
+      const thread = await threads.saveMessages(params.threadId, messages);
+      await reply.code(200).send({ thread });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save messages.";
+      const statusCode = message.includes("not found") ? 404 : 400;
+      await reply.code(statusCode).send({ error: message });
+    }
+  });
+
+  app.patch("/api/v1/threads/:threadId", async (request, reply) => {
+    const params = threadIdParamsSchema.parse(request.params);
+    const input = updateThreadSchema.parse(request.body);
+    try {
+      const thread = await threads.updateThread(params.threadId, input);
+      await reply.code(200).send({ thread });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update thread.";
+      const statusCode = message.includes("not found") ? 404 : 400;
+      await reply.code(statusCode).send({ error: message });
+    }
+  });
+
+  app.delete("/api/v1/threads/:threadId", async (request, reply) => {
+    const params = threadIdParamsSchema.parse(request.params);
+    const deleted = await threads.deleteThread(params.threadId);
+    if (!deleted) {
+      await reply.code(404).send({ error: `Thread not found: ${params.threadId}` });
+      return;
+    }
+    await reply.code(200).send({ success: true, threadId: params.threadId });
+  });
 
   app.post("/api/v1/system/browse-folder", async () => folderPicker());
 
@@ -213,7 +289,11 @@ export async function createApplication(dependencies: ApplicationDependencies): 
     }
 
     try {
-      dependencies.terminals.start(reservation.id, project.root);
+      dependencies.terminals.start(reservation.id, project.root, {
+        mode: input.mode,
+        model: input.model,
+        reasoningEffort: input.reasoning_effort,
+      });
       reply.header("set-cookie", createTerminalSessionCookie(dependencies.launchToken));
       await reply.code(201).send({ terminal_id: reservation.id, project });
     } catch (error) {

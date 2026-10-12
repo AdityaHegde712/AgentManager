@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AgentRunnerApi, type Brief, type ProjectAlias, type ProviderSnapshot } from "./api.js";
+import { AgentRunnerApi, type Brief, type ProjectAlias, type ProviderSnapshot, type ThreadSummary } from "./api.js";
+import {
+  generateConversationMarkdown,
+  type ChatMessage,
+} from "./export-markdown.js";
 import {
   detectUnregisteredPathOrCandidate,
   inferProject,
@@ -13,45 +17,6 @@ import { resolveThreadProject } from "./thread-context.js";
 const api = new AgentRunnerApi();
 
 
-type ChatCard =
-  | {
-      type: "rules";
-      threadScope: string;
-    }
-  | {
-      type: "confirm-project";
-      candidate: ProjectAlias;
-      userDeliverable: string;
-    }
-  | {
-      type: "clarify-project";
-      candidates: ProjectAlias[];
-      userDeliverable: string;
-    }
-  | {
-      type: "register-candidate";
-      candidateAlias: string;
-      candidatePath?: string;
-      userDeliverable: string;
-    }
-  | {
-      type: "prompt-project";
-      prompt: string;
-    }
-  | {
-      type: "brief";
-      brief: Brief;
-    };
-
-
-type ChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  text?: string;
-  card?: ChatCard;
-};
-
-
 const EPHEMERAL_PROGRESS_STEPS = [
   "Resolving project...",
   "Scanning repository context...",
@@ -59,6 +24,21 @@ const EPHEMERAL_PROGRESS_STEPS = [
   "Running git status...",
   "Synthesizing brief with OpenRouter...",
 ];
+
+
+function createDefaultWelcomeMessages(): ChatMessage[] {
+  return [
+    {
+      id: "initial-welcome",
+      role: "assistant",
+      text: "Describe the next deliverable below. I will prepare a reviewable continuation brief; general assistant chat is deferred to vNext.",
+      card: {
+        type: "rules",
+        threadScope: "project registration required",
+      },
+    },
+  ];
+}
 
 
 export function App(): React.JSX.Element {
@@ -70,21 +50,32 @@ export function App(): React.JSX.Element {
   const [requestedProjectAlias, setRequestedProjectAlias] = useState(
     () => new URLSearchParams(window.location.search).get("project"),
   );
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get("thread"),
+  );
+  const [activeThreadTitle, setActiveThreadTitle] = useState("Continuation workspace");
+  const isSwitchingThreadRef = useRef(true);
+
   const [alias, setAlias] = useState("");
   const [root, setRoot] = useState("");
   const [deliverable, setDeliverable] = useState("");
-  const [handoff, setHandoff] = useState("");
-  const [stateDocumentText, setStateDocumentText] = useState("");
   const [transcript, setTranscript] = useState("");
-  const [gitStatus, setGitStatus] = useState("");
+  const [catalogExpanded, setCatalogExpanded] = useState(false);
   const [approvedBrief, setApprovedBrief] = useState<string>();
   const [terminalId, setTerminalId] = useState<string>();
+  const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
+  const [launchMode, setLaunchMode] = useState<"resume" | "new">("resume");
+  const [launchModel, setLaunchModel] = useState("gpt-5.6-terra");
+  const [launchReasoning, setLaunchReasoning] = useState<"low" | "medium" | "high">("medium");
   const [message, setMessage] = useState("Refreshing local provider status.");
   const [confirmedProject, setConfirmedProject] = useState<ProjectAlias>();
   const [inspectedAlias, setInspectedAlias] = useState<string>();
   const [ephemeralStatus, setEphemeralStatus] = useState<string | null>(null);
   const [renamingAlias, setRenamingAlias] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [renamingThreadId, setRenamingThreadId] = useState<string | null>(null);
+  const [renameThreadValue, setRenameThreadValue] = useState("");
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
   const duplicateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -115,17 +106,7 @@ export function App(): React.JSX.Element {
 
   const effectiveProject = confirmedProject ?? threadProject;
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    {
-      id: "initial-welcome",
-      role: "assistant",
-      text: "Describe the next deliverable below. I will prepare a reviewable continuation brief; general assistant chat is deferred to vNext.",
-      card: {
-        type: "rules",
-        threadScope: "project registration required",
-      },
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => createDefaultWelcomeMessages());
 
   const terminalUrl = useMemo(
     () => (terminalId ? api.terminalUrl(terminalId) : undefined),
@@ -143,9 +124,90 @@ export function App(): React.JSX.Element {
     }
   }, []);
 
+  const loadInitialThreads = useCallback(async () => {
+    try {
+      const threadList = await api.listThreads();
+      setThreads(threadList);
+
+      const params = new URLSearchParams(window.location.search);
+      const urlThreadId = params.get("thread");
+      const urlProjectAlias = params.get("project");
+
+      if (urlThreadId) {
+        try {
+          const thread = await api.getThread<ChatMessage>(urlThreadId);
+          setActiveThreadId(thread.id);
+          setActiveThreadTitle(thread.title);
+          if (thread.projectAlias) {
+            setRequestedProjectAlias(thread.projectAlias);
+          } else if (urlProjectAlias) {
+            void api.updateThread(thread.id, { projectAlias: urlProjectAlias });
+          }
+          isSwitchingThreadRef.current = true;
+          if (thread.messages && thread.messages.length > 0) {
+            setMessages(thread.messages);
+          } else {
+            setMessages(createDefaultWelcomeMessages());
+          }
+          return;
+        } catch {
+          // If not found, fall through
+        }
+      }
+
+      if (threadList.length > 0) {
+        const mostRecent = threadList[0];
+        const thread = await api.getThread<ChatMessage>(mostRecent.id);
+        setActiveThreadId(thread.id);
+        setActiveThreadTitle(thread.title);
+        if (thread.projectAlias) {
+          setRequestedProjectAlias(thread.projectAlias);
+        } else if (urlProjectAlias) {
+          void api.updateThread(thread.id, { projectAlias: urlProjectAlias });
+        }
+        isSwitchingThreadRef.current = true;
+        if (thread.messages && thread.messages.length > 0) {
+          setMessages(thread.messages);
+        } else {
+          setMessages(createDefaultWelcomeMessages());
+        }
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("thread", thread.id);
+        if (thread.projectAlias) {
+          nextUrl.searchParams.set("project", thread.projectAlias);
+        }
+        window.history.replaceState(null, "", nextUrl);
+      } else {
+        const created = await api.createThread<ChatMessage>({
+          title: "Continuation workspace",
+          projectAlias: urlProjectAlias ?? undefined,
+        });
+        const summary: ThreadSummary = {
+          id: created.id,
+          title: created.title,
+          projectAlias: created.projectAlias,
+          createdAt: created.createdAt,
+          updatedAt: created.updatedAt,
+          messageCount: 0,
+        };
+        setThreads([summary]);
+        setActiveThreadId(created.id);
+        setActiveThreadTitle(created.title);
+        isSwitchingThreadRef.current = true;
+        setMessages(createDefaultWelcomeMessages());
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("thread", created.id);
+        window.history.replaceState(null, "", nextUrl);
+      }
+    } catch (error) {
+      console.error("Failed to load threads:", error);
+    }
+  }, []);
+
   useEffect(() => {
     queueMicrotask(() => void refresh());
-  }, [refresh]);
+    queueMicrotask(() => void loadInitialThreads());
+  }, [refresh, loadInitialThreads]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -164,15 +226,189 @@ export function App(): React.JSX.Element {
     });
   }, [selectedProvider]);
 
+  const handleSelectThread = useCallback(async (selectedThreadId: string) => {
+    if (selectedThreadId === activeThreadId) {
+      return;
+    }
+    try {
+      const thread = await api.getThread<ChatMessage>(selectedThreadId);
+      setActiveThreadId(thread.id);
+      setActiveThreadTitle(thread.title);
+      setRequestedProjectAlias(thread.projectAlias ?? null);
+      setConfirmedProject(undefined);
+      setApprovedBrief(undefined);
+      setTerminalId(undefined);
+
+      isSwitchingThreadRef.current = true;
+      if (thread.messages && thread.messages.length > 0) {
+        setMessages(thread.messages);
+      } else {
+        setMessages(createDefaultWelcomeMessages());
+      }
+
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set("thread", thread.id);
+      if (thread.projectAlias) {
+        nextUrl.searchParams.set("project", thread.projectAlias);
+      } else {
+        nextUrl.searchParams.delete("project");
+      }
+      window.history.pushState({}, "", nextUrl);
+
+      const latestThreads = await api.listThreads();
+      setThreads(latestThreads);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to load thread.");
+    }
+  }, [activeThreadId]);
+
+  const handleNewThread = useCallback(async () => {
+    try {
+      const activeHasUserMessage = messages.some((m) => m.role === "user");
+      const activeIsUnused = activeThreadId ? !activeHasUserMessage : false;
+      const unusedThread = activeIsUnused
+        ? (threads.find((t) => t.id === activeThreadId) ?? (activeThreadId ? { id: activeThreadId } : null))
+        : threads.find((t) => t.messageCount === 0);
+
+      if (unusedThread) {
+        if (unusedThread.id !== activeThreadId) {
+          await handleSelectThread(unusedThread.id);
+        }
+        setMessage("Switched to existing unused orchestration thread.");
+        return;
+      }
+
+      const created = await api.createThread<ChatMessage>({
+        title: "New orchestration thread",
+        projectAlias: requestedProjectAlias ?? undefined,
+      });
+      setActiveThreadId(created.id);
+      setActiveThreadTitle(created.title);
+      setConfirmedProject(undefined);
+      setApprovedBrief(undefined);
+      setTerminalId(undefined);
+
+      isSwitchingThreadRef.current = true;
+      setMessages(createDefaultWelcomeMessages());
+
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set("thread", created.id);
+      if (created.projectAlias) {
+        nextUrl.searchParams.set("project", created.projectAlias);
+      } else {
+        nextUrl.searchParams.delete("project");
+      }
+      window.history.pushState({}, "", nextUrl);
+
+      const latestThreads = await api.listThreads();
+      setThreads(latestThreads);
+      setMessage("Created new orchestration thread.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to create thread.");
+    }
+  }, [activeThreadId, messages, threads, requestedProjectAlias, handleSelectThread]);
+
+  const handleSaveThreadRename = async (threadId: string, newTitle: string): Promise<void> => {
+    const trimmedTitle = newTitle.trim();
+    if (!trimmedTitle) {
+      setRenamingThreadId(null);
+      return;
+    }
+    try {
+      await api.updateThread(threadId, { title: trimmedTitle });
+      setThreads((current) =>
+        current.map((t) => (t.id === threadId ? { ...t, title: trimmedTitle } : t)),
+      );
+      if (threadId === activeThreadId) {
+        setActiveThreadTitle(trimmedTitle);
+      }
+      setRenamingThreadId(null);
+      setMessage(`Renamed thread to "${trimmedTitle}".`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to rename thread.");
+    }
+  };
+
+  const handleDeleteThread = async (threadId: string, title: string): Promise<void> => {
+    if (!window.confirm(`Delete thread "${title}"?`)) {
+      return;
+    }
+    try {
+      await api.deleteThread(threadId);
+      const remainingThreads = threads.filter((t) => t.id !== threadId);
+      setThreads(remainingThreads);
+
+      if (threadId === activeThreadId) {
+        if (remainingThreads.length > 0) {
+          await handleSelectThread(remainingThreads[0].id);
+        } else {
+          const created = await api.createThread<ChatMessage>({
+            title: "Continuation workspace",
+            projectAlias: requestedProjectAlias ?? undefined,
+          });
+          const summary: ThreadSummary = {
+            id: created.id,
+            title: created.title,
+            projectAlias: created.projectAlias,
+            createdAt: created.createdAt,
+            updatedAt: created.updatedAt,
+            messageCount: 0,
+          };
+          setThreads([summary]);
+          setActiveThreadId(created.id);
+          setActiveThreadTitle(created.title);
+          setConfirmedProject(undefined);
+          setApprovedBrief(undefined);
+          setTerminalId(undefined);
+          isSwitchingThreadRef.current = true;
+          setMessages(createDefaultWelcomeMessages());
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set("thread", created.id);
+          if (created.projectAlias) {
+            nextUrl.searchParams.set("project", created.projectAlias);
+          } else {
+            nextUrl.searchParams.delete("project");
+          }
+          window.history.pushState({}, "", nextUrl);
+        }
+      }
+      setMessage(`Deleted thread "${title}".`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to delete thread.");
+    }
+  };
+
   useEffect(() => {
     const updateThreadScope = () => {
-      const paramAlias = new URLSearchParams(window.location.search).get("project");
+      const params = new URLSearchParams(window.location.search);
+      const paramAlias = params.get("project");
+      const paramThread = params.get("thread");
       setRequestedProjectAlias(paramAlias);
+      if (paramThread && paramThread !== activeThreadId) {
+        void handleSelectThread(paramThread);
+      }
     };
 
     window.addEventListener("popstate", updateThreadScope);
     return () => window.removeEventListener("popstate", updateThreadScope);
-  }, []);
+  }, [activeThreadId, handleSelectThread]);
+
+  useEffect(() => {
+    if (isSwitchingThreadRef.current) {
+      isSwitchingThreadRef.current = false;
+      return;
+    }
+    if (!activeThreadId) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      void api.saveMessages(activeThreadId, messages).then(async () => {
+        const latestThreads = await api.listThreads();
+        setThreads(latestThreads);
+      }).catch((err) => console.error("Failed to persist messages:", err));
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [messages, activeThreadId]);
 
   const attachProjectToThread = (project: ProjectAlias): void => {
     const nextUrl = new URL(window.location.href);
@@ -180,7 +416,39 @@ export function App(): React.JSX.Element {
     window.history.pushState({}, "", nextUrl);
     setRequestedProjectAlias(project.alias);
     setConfirmedProject(project);
+    if (activeThreadId) {
+      void api.updateThread(activeThreadId, { projectAlias: project.alias }).then(async () => {
+        const latestThreads = await api.listThreads();
+        setThreads(latestThreads);
+      });
+    }
   };
+
+  const handleExportConversation = useCallback(() => {
+    const isoTimestamp = new Date().toISOString();
+    const threadId = activeThreadId || "default";
+    const markdown = generateConversationMarkdown({
+      threadId,
+      projectAlias: effectiveProject?.alias,
+      projectRoot: effectiveProject?.root,
+      timestamp: isoTimestamp,
+      messages,
+    });
+
+    const fileTimestamp = isoTimestamp.replace(/[:.]/g, "-");
+    const filename = `AgentRunner-Conversation-${threadId}-${fileTimestamp}.md`;
+
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setMessage(`Exported conversation to ${filename}.`);
+  }, [activeThreadId, effectiveProject, messages]);
 
   const addProject = async (): Promise<void> => {
     try {
@@ -306,12 +574,7 @@ export function App(): React.JSX.Element {
       providerId: selectedProviderId,
       model: selectedModel || "openrouter/free",
       deliverable: deliverableText,
-      handoff: handoff.trim() || undefined,
-      stateDocuments: stateDocumentText.trim()
-        ? [{ path: "Selected .agent-tasks context", content: stateDocumentText }]
-        : undefined,
       transcript: transcript.trim() || undefined,
-      gitStatus: gitStatus.trim() || undefined,
     });
   };
 
@@ -332,8 +595,7 @@ export function App(): React.JSX.Element {
     ]);
     setDeliverable("");
 
-    // If project is already active:
-    if (effectiveProject) {
+    const draftBriefWithProject = async (targetProject: ProjectAlias): Promise<void> => {
       if (selectedProvider?.status !== "healthy") {
         setMessage("Selected provider is not healthy.");
         setMessages((prev) => [
@@ -348,7 +610,7 @@ export function App(): React.JSX.Element {
       }
 
       try {
-        const nextBrief = await runWithProgress(() => createBriefForText(effectiveProject, promptText));
+        const nextBrief = await runWithProgress(() => createBriefForText(targetProject, promptText));
         setMessages((prev) => [
           ...prev,
           {
@@ -371,46 +633,9 @@ export function App(): React.JSX.Element {
           },
         ]);
       }
-      return;
-    }
+    };
 
-    // No project confirmed yet: check project inference
-    const inference: ProjectInferenceResult = inferProject(promptText, projects);
-    if (inference.type === "single") {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          card: {
-            type: "confirm-project",
-            candidate: inference.project,
-            userDeliverable: promptText,
-          },
-        },
-      ]);
-      setMessage(`Found registered project ${inference.project.alias}. Please confirm to proceed.`);
-      return;
-    }
-
-    if (inference.type === "multiple") {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          card: {
-            type: "clarify-project",
-            candidates: inference.candidates,
-            userDeliverable: promptText,
-          },
-        },
-      ]);
-      setMessage("Multiple matching projects found. Select which project to use.");
-      return;
-    }
-
-    // Check for unregistered path/candidate
+    // 1. Run detectUnregisteredPathOrCandidate(promptText): if found, show register-candidate card.
     const unregistered = detectUnregisteredPathOrCandidate(promptText);
     if (unregistered) {
       setMessages((prev) => [
@@ -432,60 +657,95 @@ export function App(): React.JSX.Element {
       return;
     }
 
-    if (threadProject) {
-      setConfirmedProject(threadProject);
-      try {
-        const nextBrief = await runWithProgress(() => createBriefForText(threadProject, promptText));
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            text: "Draft continuation brief prepared. Review and approve it before opening Codex.",
-            card: { type: "brief", brief: nextBrief },
+    // 2. Run inferProject(promptText, projects):
+    const inference: ProjectInferenceResult = inferProject(promptText, projects);
+
+    if (inference.type === "multiple") {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          card: {
+            type: "clarify-project",
+            candidates: inference.candidates,
+            userDeliverable: promptText,
           },
-        ]);
-        setMessage("Brief drafted. Review and approve it before enabling Codex.");
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : "Unable to draft the brief.";
-        setMessage(msg);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            text: `Error drafting brief: ${msg}`,
-          },
-        ]);
-      }
+        },
+      ]);
+      setMessage("Multiple matching projects found. Select which project to use.");
       return;
     }
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        card: {
-          type: "prompt-project",
-          prompt:
-            "No matching registered project found. Please select or register a project from the catalog at right.",
+    if (inference.type === "single") {
+      if (!effectiveProject || effectiveProject.alias !== inference.project.alias) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            card: {
+              type: "confirm-project",
+              candidate: inference.project,
+              userDeliverable: promptText,
+            },
+          },
+        ]);
+        setMessage(`Found registered project ${inference.project.alias}. Please confirm to proceed.`);
+        return;
+      }
+
+      // effectiveProject?.alias === inference.project.alias
+      await draftBriefWithProject(effectiveProject);
+      return;
+    }
+
+    if (inference.type === "none" && !unregistered) {
+      if (effectiveProject) {
+        await draftBriefWithProject(effectiveProject);
+        return;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          card: {
+            type: "prompt-project",
+            prompt:
+              "No matching registered project found. Please select or register a project from the catalog at right.",
+          },
         },
-      },
-    ]);
-    setMessage("No matching project found. Please select or register one from the catalog.");
+      ]);
+      setMessage("No matching project found. Please select or register one from the catalog.");
+    }
   };
 
-  const launchTerminal = async (): Promise<void> => {
+  const openLaunchModal = (): void => {
     if (!effectiveProject) {
       setMessage("Register or confirm a project for this thread before starting Codex.");
       return;
     }
+    setIsLaunchModalOpen(true);
+  };
+
+  const handleConfirmLaunch = async (): Promise<void> => {
+    if (!effectiveProject) {
+      setMessage("Register or confirm a project for this thread before starting Codex.");
+      setIsLaunchModalOpen(false);
+      return;
+    }
 
     try {
-      const terminal = await api.startTerminal(effectiveProject.alias);
+      const terminal = await api.startTerminal(effectiveProject.alias, {
+        mode: launchMode,
+        model: launchModel,
+        reasoningEffort: launchReasoning,
+      });
       setTerminalId(terminal.terminal_id);
-      setMessage("Codex picker started. Select a session, then paste the approved brief when ready.");
+      setIsLaunchModalOpen(false);
+      setMessage("Codex terminal started. Paste the approved brief when ready.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to start Codex.");
     }
@@ -723,7 +983,7 @@ export function App(): React.JSX.Element {
             );
           }}
           onCopy={(content) => void copyBrief(content)}
-          onLaunchTerminal={() => void launchTerminal()}
+          onLaunchTerminal={openLaunchModal}
           terminalId={terminalId}
         />
       );
@@ -757,26 +1017,117 @@ export function App(): React.JSX.Element {
       <aside className="thread-rail" aria-label="Assistant thread history">
         <p className="eyebrow">LOCAL CODING-AGENT HUB</p>
         <h1 className="brand">AgentRunner</h1>
-        <button className="new-thread" type="button">+ New orchestration thread</button>
+        <button className="new-thread" onClick={() => void handleNewThread()} type="button">
+          + New orchestration thread
+        </button>
         <nav className="history" aria-label="Recent threads">
           <h2>Recent</h2>
-          <div className="thread active">
-            Continuation workspace
-            <small>Scope: {effectiveProject?.alias ?? "not attached"}</small>
-          </div>
-          <div className="thread">
-            New orchestration thread
-            <small>Project scope is declared per thread</small>
-          </div>
+          {threads.map((t) => {
+            const isRenaming = renamingThreadId === t.id;
+            const threadTitle = t.title || "Continuation workspace";
+            return (
+              <div key={t.id} className={`thread-item-wrap ${t.id === activeThreadId ? "active" : ""}`}>
+                {isRenaming ? (
+                  <form
+                    className="thread-rename-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void handleSaveThreadRename(t.id, renameThreadValue);
+                    }}
+                  >
+                    <input
+                      aria-label="Rename thread"
+                      autoFocus
+                      className="thread-rename-input"
+                      onChange={(e) => setRenameThreadValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          setRenamingThreadId(null);
+                        }
+                      }}
+                      type="text"
+                      value={renameThreadValue}
+                    />
+                    <div className="thread-rename-actions">
+                      <button className="button primary compact" type="submit">
+                        Save
+                      </button>
+                      <button
+                        className="button secondary compact"
+                        onClick={() => setRenamingThreadId(null)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div
+                      className={`thread ${t.id === activeThreadId ? "active" : ""}`}
+                      onClick={() => void handleSelectThread(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          void handleSelectThread(t.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="thread-title">{threadTitle}</div>
+                      <small>
+                        Scope: {t.projectAlias ?? (t.id === activeThreadId ? (effectiveProject?.alias ?? "not attached") : "not attached")}
+                      </small>
+                    </div>
+                    <div className="thread-actions" aria-label="Thread actions">
+                      <button
+                        aria-label={`Rename thread ${threadTitle}`}
+                        className="thread-action-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenamingThreadId(t.id);
+                          setRenameThreadValue(threadTitle);
+                        }}
+                        title="Rename thread"
+                        type="button"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        aria-label={`Delete thread ${threadTitle}`}
+                        className="thread-action-btn delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDeleteThread(t.id, threadTitle);
+                        }}
+                        title="Delete thread"
+                        type="button"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </nav>
       </aside>
 
       <section className="chat-column" aria-label="Assistant orchestration thread">
         <header className="chat-header">
           <div>
-            <h1>Continuation workspace</h1>
+            <h1>{activeThreadTitle || "Continuation workspace"}</h1>
             <p>Persistent orchestration thread; every terminal action declares its project scope.</p>
           </div>
+          <button
+            className="button secondary export-btn"
+            onClick={handleExportConversation}
+            type="button"
+          >
+            Export conversation (.md)
+          </button>
           <span className="local-control">LOCAL CONTROL PLANE</span>
         </header>
 
@@ -867,7 +1218,7 @@ export function App(): React.JSX.Element {
           </div>
 
           <div className="project-catalog-list">
-            {projects.map((project) => {
+            {(catalogExpanded || projects.length <= 5 ? projects : projects.slice(0, 5)).map((project) => {
               const isCurrent = effectiveProject?.alias === project.alias;
               const isInspected = inspectedAlias === project.alias;
               const isRenaming = renamingAlias === project.alias;
@@ -960,6 +1311,18 @@ export function App(): React.JSX.Element {
             {!projects.length && <p className="muted">No registered projects yet.</p>}
           </div>
 
+          {projects.length > 5 && (
+            <div className="catalog-toggle-bar">
+              <button
+                className="button ghost compact catalog-toggle-button"
+                onClick={() => setCatalogExpanded((prev) => !prev)}
+                type="button"
+              >
+                {catalogExpanded ? "Show fewer" : `Show all (${projects.length}) projects`}
+              </button>
+            </div>
+          )}
+
           <details className="registration-details">
             <summary>Register a project</summary>
             <div className="form-stack compact">
@@ -1023,17 +1386,14 @@ export function App(): React.JSX.Element {
         </Panel>
 
         <Panel title="Context packet" detail="Auto-discovered from project: HANDOFF.md, .agent-tasks/, git status.">
-          <details>
-            <summary>Manual overrides (optional)</summary>
-            <label className="field-label" htmlFor="handoff">HANDOFF.md contents</label>
-            <textarea id="handoff" onChange={(event) => setHandoff(event.target.value)} placeholder="Auto-discovered if empty; override here" value={handoff} />
-            <label className="field-label" htmlFor="state-documents">.agent-tasks state documents</label>
-            <textarea id="state-documents" onChange={(event) => setStateDocumentText(event.target.value)} placeholder="Auto-discovered if empty; override here" value={stateDocumentText} />
-            <label className="field-label" htmlFor="transcript">Codex transcript fallback</label>
-            <textarea id="transcript" onChange={(event) => setTranscript(event.target.value)} placeholder="Used only when no handoff or state document is supplied" value={transcript} />
-            <label className="field-label" htmlFor="git-status">Current Git status</label>
-            <textarea id="git-status" onChange={(event) => setGitStatus(event.target.value)} placeholder="Auto-discovered if empty; override here" value={gitStatus} />
-          </details>
+          <label className="field-label" htmlFor="transcript">Codex transcript fallback (optional)</label>
+          <textarea
+            id="transcript"
+            className="transcript-textarea"
+            onChange={(event) => setTranscript(event.target.value)}
+            placeholder="Used only when no handoff or state document is supplied"
+            value={transcript}
+          />
         </Panel>
 
         <Panel title="Work surface" detail="The terminal is a project surface, never a second assistant.">
@@ -1043,6 +1403,96 @@ export function App(): React.JSX.Element {
         </Panel>
       </aside>
     </main>
+
+    {isLaunchModalOpen && effectiveProject && (
+      <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="codex-modal-title">
+        <div className="modal-card">
+          <header className="modal-header">
+            <h2 id="codex-modal-title">Launch Codex Terminal</h2>
+            <p className="modal-target-info">
+              Target workspace: <strong>{effectiveProject.alias}</strong> <span className="modal-path">({effectiveProject.root})</span>
+            </p>
+          </header>
+
+          <div className="modal-body">
+            <fieldset className="modal-field">
+              <legend className="modal-legend">Session Mode</legend>
+              <div className="modal-radio-group">
+                <label className={`modal-radio-option ${launchMode === "resume" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="launch-mode"
+                    value="resume"
+                    checked={launchMode === "resume"}
+                    onChange={() => setLaunchMode("resume")}
+                  />
+                  <div className="modal-radio-label">
+                    <strong>Resume existing session</strong>
+                    <small>Opens native Codex session picker in terminal; press Esc to exit/start new</small>
+                  </div>
+                </label>
+                <label className={`modal-radio-option ${launchMode === "new" ? "selected" : ""}`}>
+                  <input
+                    type="radio"
+                    name="launch-mode"
+                    value="new"
+                    checked={launchMode === "new"}
+                    onChange={() => setLaunchMode("new")}
+                  />
+                  <div className="modal-radio-label">
+                    <strong>Start new session</strong>
+                    <small>Starts a fresh Codex session in project root</small>
+                  </div>
+                </label>
+              </div>
+            </fieldset>
+
+            <div className="modal-field">
+              <label htmlFor="launch-model-input">Model</label>
+              <input
+                id="launch-model-input"
+                className="input modal-input"
+                type="text"
+                value={launchModel}
+                onChange={(e) => setLaunchModel(e.target.value)}
+                placeholder="gpt-5.6-terra"
+              />
+            </div>
+
+            <div className="modal-field">
+              <label htmlFor="launch-reasoning-select">Reasoning effort</label>
+              <select
+                id="launch-reasoning-select"
+                className="input modal-select"
+                value={launchReasoning}
+                onChange={(e) => setLaunchReasoning(e.target.value as "low" | "medium" | "high")}
+              >
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </div>
+          </div>
+
+          <footer className="modal-actions">
+            <button
+              className="button ghost"
+              type="button"
+              onClick={() => setIsLaunchModalOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="button primary"
+              type="button"
+              onClick={() => void handleConfirmLaunch()}
+            >
+              Launch terminal
+            </button>
+          </footer>
+        </div>
+      </div>
+    )}
     </>
   );
 }

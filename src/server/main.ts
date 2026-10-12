@@ -6,7 +6,9 @@ import { ProviderRegistry } from "./providers/provider-registry.js";
 import { createLaunchToken } from "./security/launch-token.js";
 import { createLaunchUrl } from "./security/launch-url.js";
 import { SessionManager } from "./sessions/session-manager.js";
+import { resolveCodexExecutable } from "./system/binary-resolver.js";
 import { TerminalService } from "./terminals/terminal-service.js";
+import { ThreadStorage } from "./threads/thread-storage.js";
 
 
 loadLocalEnvironment();
@@ -15,7 +17,7 @@ const host = "127.0.0.1";
 const port = Number.parseInt(process.env.AGENT_RUNNER_PORT ?? "4310", 10);
 const launchToken = createLaunchToken();
 const sessions = new SessionManager(2);
-const terminals = new TerminalService(process.env.AGENT_RUNNER_CODEX_COMMAND ?? "codex", (terminalId) => {
+const terminals = new TerminalService(resolveCodexExecutable(), (terminalId) => {
   sessions.release(terminalId);
 });
 const providers = new ProviderRegistry([
@@ -30,6 +32,7 @@ const app = await createApplication({
   projects: new ProjectRegistry(),
   sessions,
   terminals,
+  threads: new ThreadStorage(),
 });
 
 await providers.refreshHealth();
