@@ -144,6 +144,19 @@ export function createOpenRouterProvider(options: OpenRouterProviderOptions): As
         throw new Error("OpenRouter is not configured.");
       }
 
+      const SYSTEM_PROMPT =
+        "You are a text-only continuation brief writer for an autonomous coding agent.\n" +
+        "You have NO tools, NO bash or shell access, and NO ability to execute commands or inspect directories.\n" +
+        "NEVER emit tool calls, function calls, bash commands, or XML invocation tags (such as <dots_function_call>, <invoke>, <function_calls>, <tool_call>).\n" +
+        "Your ONLY task is to synthesize the provided deliverable and evidence into a structured, reviewable Markdown continuation brief for the next developer agent.\n\n" +
+        "Format your response strictly using these Markdown sections:\n" +
+        "# Continuation Brief\n" +
+        "## 1. Objective & Requested Deliverable\n" +
+        "## 2. Evidence & Context Summary\n" +
+        "## 3. Constraints & Operational Directives\n" +
+        "## 4. Immediate Concrete Next Action\n\n" +
+        "Do not claim unverified work is complete. Output only the pure markdown brief text.";
+
       let response: Response;
       try {
         response = await fetchFn(`${baseUrl}/chat/completions`, {
@@ -158,8 +171,7 @@ export function createOpenRouterProvider(options: OpenRouterProviderOptions): As
             messages: [
               {
                 role: "system",
-                content:
-                  "Create a concise continuation brief for a coding agent. Preserve facts, list evidence sources, requested deliverable, constraints, and the next concrete action. Do not claim unverified work is complete.",
+                content: SYSTEM_PROMPT,
               },
               { role: "user", content: request.evidence },
             ],
@@ -201,7 +213,17 @@ export function createOpenRouterProvider(options: OpenRouterProviderOptions): As
         throw new Error("OpenRouter returned no brief content.");
       }
 
-      return content;
+      const cleanContent = content
+        .replace(/<dots_function_call>[\s\S]*?<\/dots_function_call>/gi, "")
+        .replace(/<invoke[\s\S]*?<\/invoke>/gi, "")
+        .replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, "")
+        .trim();
+
+      if (!cleanContent) {
+        throw new Error("OpenRouter returned a tool-call instead of brief markdown content.");
+      }
+
+      return cleanContent;
     },
   };
 }
