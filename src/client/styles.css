@@ -683,6 +683,40 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.compose-project-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.composer-project-label {
+  color: #8b9698;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.composer-project-select {
+  flex: 1;
+  max-width: 260px;
+  min-width: 160px;
+  padding: 5px 8px;
+  border: 1px solid #314345;
+  border-radius: 5px;
+  background: #121212;
+  color: #d8e2e2;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+
+.composer-project-select:focus {
+  border-color: #5e9b95;
 }
 
 .scope {
@@ -1121,6 +1155,16 @@ input:focus, select:focus, textarea:focus {
   }
   .candidate-actions {
     width: 100%;
+  }
+  .compose-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .compose-project-picker {
+    width: 100%;
+  }
+  .composer-project-select {
+    max-width: 100%;
   }
 }
 

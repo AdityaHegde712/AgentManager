@@ -5,11 +5,6 @@ import {
   generateConversationMarkdown,
   type ChatMessage,
 } from "./export-markdown.js";
-import {
-  detectUnregisteredPathOrCandidate,
-  inferProject,
-  type ProjectInferenceResult,
-} from "./project-inference.js";
 import { TerminalPanel } from "./TerminalPanel.js";
 import { resolveThreadProject } from "./thread-context.js";
 
@@ -425,6 +420,13 @@ export function App(): React.JSX.Element {
     }
   };
 
+  const handleComposerProjectChange = (chosenAlias: string): void => {
+    const project = projects.find((p) => p.alias === chosenAlias);
+    if (project) {
+      attachProjectToThread(project);
+    }
+  };
+
   const handleExportConversation = useCallback(() => {
     const isoTimestamp = new Date().toISOString();
     const threadId = activeThreadId || "default";
@@ -636,91 +638,25 @@ export function App(): React.JSX.Element {
       }
     };
 
-    // 1. Run inferProject(promptText, projects) FIRST before checking detectUnregisteredPathOrCandidate
-    const inference: ProjectInferenceResult = inferProject(promptText, projects);
-
-    if (inference.type === "multiple") {
+    if (!effectiveProject) {
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
           card: {
-            type: "clarify-project",
-            candidates: inference.candidates,
+            type: "prompt-project",
+            prompt:
+              "Please select a target workspace from the composer dropdown before drafting a continuation brief.",
             userDeliverable: promptText,
           },
         },
       ]);
-      setMessage("Multiple matching projects found. Select which project to use.");
+      setMessage("Please select a workspace from the composer dropdown.");
       return;
     }
 
-    if (inference.type === "single") {
-      if (!effectiveProject || effectiveProject.alias !== inference.project.alias) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            card: {
-              type: "confirm-project",
-              candidate: inference.project,
-              userDeliverable: promptText,
-            },
-          },
-        ]);
-        setMessage(`Found registered project ${inference.project.alias}. Please confirm to proceed.`);
-        return;
-      }
-
-      // effectiveProject?.alias === inference.project.alias
-      await draftBriefWithProject(effectiveProject);
-      return;
-    }
-
-    // 2. inference.type === "none": ONLY THEN check detectUnregisteredPathOrCandidate(promptText)
-    const unregistered = detectUnregisteredPathOrCandidate(promptText);
-    if (unregistered) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          card: {
-            type: "register-candidate",
-            candidateAlias: unregistered.candidateAlias,
-            candidatePath: unregistered.candidatePath,
-            userDeliverable: promptText,
-          },
-        },
-      ]);
-      setMessage(
-        `Project ${unregistered.candidateAlias} is not registered yet. Register it to continue.`,
-      );
-      return;
-    }
-
-    // 3. Not unregistered either: continue with effectiveProject if present, else prompt
-    if (effectiveProject) {
-      await draftBriefWithProject(effectiveProject);
-      return;
-    }
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        card: {
-          type: "prompt-project",
-          prompt:
-            "No matching registered project found. Please select or register a project from the catalog at right.",
-          userDeliverable: promptText,
-        },
-      },
-    ]);
-    setMessage("No matching project found. Please select or register one from the catalog.");
+    await draftBriefWithProject(effectiveProject);
   };
 
   const openLaunchModal = (): void => {
@@ -1301,9 +1237,21 @@ export function App(): React.JSX.Element {
               value={deliverable}
             />
             <div className="compose-actions">
-              <span className="scope">
-                Scope: {effectiveProject?.alias ?? "registration required"} - Context packet at right
-              </span>
+              <div className="compose-project-picker">
+                <label htmlFor="composer-project-select" className="composer-project-label">Scope:</label>
+                <select
+                  id="composer-project-select"
+                  className="composer-project-select"
+                  aria-label="Select target workspace"
+                  value={effectiveProject?.alias ?? ""}
+                  onChange={(e) => handleComposerProjectChange(e.target.value)}
+                >
+                  <option value="">Select workspace...</option>
+                  {projects.map((p) => (
+                    <option key={p.alias} value={p.alias}>{p.alias}</option>
+                  ))}
+                </select>
+              </div>
               <button
                 className="button primary"
                 disabled={!deliverable.trim()}
