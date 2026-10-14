@@ -97,4 +97,9 @@ All Sprint 2 Phase 5 tasks completed, tested, and verified.
 
 All Sprint 2 Phase 6 tasks completed, tested, and verified.
 
+17. [x] Sprint 2 Stabilization: OpenRouter Prompt Hardening, XML Sanitization & Composer Workspace Selector:
+   - [x] Milestone 1: OpenRouter prompt hardening forbidding tool/bash calls, mandating 4 Markdown sections, and regex toolcall XML tag sanitization (`<dots_function_call>`, `<invoke>`, `<function_calls>`) with unit tests in `tests/integration/openrouter-free-models.test.ts`.
+   - [x] Milestone 2: Embedded workspace selector dropdown in composer (`.compose-project-picker`) in `src/client/App.tsx` and `src/client/styles.css`, eliminating natural language regex misinterpretations on deliverable prompts.
+   - [x] Milestone 3: Playwright end-to-end browser verification (`verify_composer_selector_and_brief.py`), proof screenshot (`composer-selector-verified.png`), and full quality gate (`npm test`, `npm run lint`, `npm run build`).
 
+All Sprint 2 Stabilization tasks completed, tested, and verified.
